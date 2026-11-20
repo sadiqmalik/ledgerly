@@ -45,6 +45,10 @@ describe('documents API', () => {
     assert.deepEqual((await viewer.get(`${U}/documents?q=khan`)).body.map(d => d.title), ['Blood test']);
     assert.deepEqual((await viewer.get(`${U}/documents?q=city`)).body.map(d => d.title), ['Blood test']);
     assert.deepEqual((await viewer.get(`${U}/documents?project=proj`)).body.length, 1);
+    const types2 = encodeURIComponent('Lab\u001fImaging');
+    assert.deepEqual((await viewer.get(`${U}/documents?type=${types2}`)).body.length, 2);
+    assert.deepEqual((await viewer.get(`${U}/documents?project=proj,none`)).body.length, 2);
+    assert.deepEqual((await viewer.get(`${U}/documents?project=none`)).body.map(d => d.title), ['X-ray']);
     assert.deepEqual((await viewer.get(`${U}/documents?from=2026-02-01`)).body.map(d => d.title), ['X-ray']);
     assert.deepEqual((await viewer.get(`${U}/documents/types`)).body, ['Imaging', 'Lab']);
 

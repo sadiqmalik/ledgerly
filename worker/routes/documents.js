@@ -152,9 +152,20 @@ const registerDocumentRoutes = (app, { repo, env }) => {
     const where = ['d.book_id = ?'];
     const params = [b];
     const add = (sql, ...p) => { where.push(sql); params.push(...p); };
-    if (f.project) add('d.project_id = ?', f.project);
+    // project and type take several values: ids comma separated ('none' = no project), types separated by \u001f.
+    if (f.project) {
+      const ids = f.project.split(',').filter(Boolean).slice(0, 100);
+      const real = ids.filter(x => x !== 'none');
+      const parts = [];
+      if (real.length) { parts.push(`d.project_id IN (${real.map(() => '?').join(',')})`); params.push(...real); }
+      if (ids.includes('none')) parts.push('d.project_id IS NULL');
+      if (parts.length) where.push(`(${parts.join(' OR ')})`);
+    }
     if (f.party) add('d.party_id = ?', f.party);
-    if (f.type) add('d.type = ?', f.type);
+    if (f.type) {
+      const types = f.type.split('\u001f').filter(Boolean).slice(0, 100);
+      if (types.length) add(`d.type IN (${types.map(() => '?').join(',')})`, ...types);
+    }
     if (f.from) add('d.date >= ?', f.from);
     if (f.to) add('d.date <= ?', f.to);
     if (f.q) {

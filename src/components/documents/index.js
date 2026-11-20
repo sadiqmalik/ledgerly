@@ -1,5 +1,5 @@
 import PartyChip from '../common/PartyChip';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../../services/dataAPI';
 import { useLedger } from '../../hooks/LedgerContext';
 import Modal from '../common/Modal';
@@ -9,6 +9,7 @@ import ComboInput from '../common/ComboInput';
 import Amount from '../common/Amount';
 import EntryPicker, { EntryChips } from './EntryPicker';
 import { errorMessage, findParty, todayISO } from '../common/format';
+import MultiSelect from '../common/MultiSelect';
 import { inputCls, btnPrimary, btnSecondary, btnDanger, Field } from '../settings/ui';
 
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -149,7 +150,7 @@ export default function Documents() {
   const [projects, setProjects] = useState([]);
   const [types, setTypes] = useState([]);
   const [every, setEvery] = useState([]); // unfiltered list, for doctor and hospital suggestions
-  const [filt, setFilt] = useState({ project: '', type: '', q: '', from: '', to: '' });
+  const [filt, setFilt] = useState({ project: [], type: [], q: '', from: '', to: '' });
   const [editing, setEditing] = useState(null); // null | {} (new) | doc
   const [pendingDelete, setPendingDelete] = useState(null); // doc awaiting confirmation, else null
   const [deleting, setDeleting] = useState(false);
@@ -165,7 +166,7 @@ export default function Documents() {
   }, [base, n]);
   useEffect(() => {
     let off = false;
-    const params = Object.fromEntries(Object.entries(filt).filter(([, v]) => v));
+    const params = Object.fromEntries(Object.entries({ ...filt, project: filt.project.join(','), type: filt.type.join('\u001f') }).filter(([, v]) => v));
     const t = setTimeout(() => {
       api.get(`${base}/documents`, { params })
         .then(r => { if (!off) { setRows(r.data); setError(''); } })
@@ -175,6 +176,8 @@ export default function Documents() {
   }, [base, filt, n]);
 
   const setF = k => e => setFilt(s => ({ ...s, [k]: e.target.value }));
+  const projOpts = useMemo(() => projects.map(p => ({ value: p.id, label: p.name })), [projects]);
+  const typeOpts = useMemo(() => types.map(t => ({ value: t, label: t })), [types]);
   const fileUrl = d => `/api${base}/documents/${d.id}/file`;
   const remove = useCallback(async d => {
     setDeleting(true);
@@ -197,22 +200,14 @@ export default function Documents() {
 
   return (
     <section className="min-w-0 space-y-4 p-4 sm:p-6">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-xl font-semibold text-foreground">Documents</h2>
-        {canEdit && <button type="button" className={btnPrimary} onClick={() => setEditing({})}>Add document</button>}
-      </div>
-      <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap md:items-center">
-        <select aria-label="Project" className={`${inputCls} !mt-0 md:!w-auto`} value={filt.project} onChange={setF('project')}>
-          <option value="">All projects</option>
-          {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </select>
-        <select aria-label="Type" className={`${inputCls} !mt-0 md:!w-auto`} value={filt.type} onChange={setF('type')}>
-          <option value="">All types</option>
-          {types.map(t => <option key={t} value={t}>{t}</option>)}
-        </select>
-        <input type="search" aria-label="Search" placeholder="Search" className={`${inputCls} !mt-0 col-span-2 md:!w-56`} value={filt.q} onChange={setF('q')} />
-        <input type="date" min="1900-01-01" max="9999-12-31" aria-label="From" className={`${inputCls} !mt-0 md:!w-auto`} value={filt.from} onChange={setF('from')} />
-        <input type="date" min="1900-01-01" max="9999-12-31" aria-label="To" className={`${inputCls} !mt-0 md:!w-auto`} value={filt.to} onChange={setF('to')} />
+      <h2 className="text-xl font-semibold text-foreground">Documents</h2>
+      <div className="grid grid-cols-2 items-end gap-2 md:grid-cols-[repeat(5,minmax(0,1fr))_auto]">
+        <Field label="Project"><MultiSelect label="Project" allLabel="All projects" noneLabel="(none)" options={projOpts} value={filt.project} onChange={v => setFilt(s => ({ ...s, project: v }))} /></Field>
+        <Field label="Type"><MultiSelect label="Type" allLabel="All types" options={typeOpts} value={filt.type} onChange={v => setFilt(s => ({ ...s, type: v }))} /></Field>
+        <Field label="Search"><input type="search" className="mt-1 w-full min-w-0" placeholder="Title or note" value={filt.q} onChange={setF('q')} /></Field>
+        <Field label="From"><input type="date" min="1900-01-01" max="9999-12-31" className="mt-1 w-full min-w-0" value={filt.from} onChange={setF('from')} /></Field>
+        <Field label="To"><input type="date" min="1900-01-01" max="9999-12-31" className="mt-1 w-full min-w-0" value={filt.to} onChange={setF('to')} /></Field>
+        {canEdit && <button type="button" className={`${btnPrimary} col-span-2 md:col-span-1 md:py-[0.55rem]`} onClick={() => setEditing({})}>Add document</button>}
       </div>
       {error && <p role="alert" className="text-sm text-negative">{error}</p>}
       {rows && !rows.length && <p className="text-sm text-muted-foreground">No documents.</p>}
