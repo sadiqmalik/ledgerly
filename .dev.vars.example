@@ -1,0 +1,4 @@
+# Copy to .dev.vars (git-ignored). Read by `wrangler dev`.
+# Under Warden the browser origin is https://app.ledgerly.test.
+# Without Warden, http://localhost:3100 is also accepted automatically over plain http.
+ALLOWED_ORIGIN=https://app.ledgerly.test

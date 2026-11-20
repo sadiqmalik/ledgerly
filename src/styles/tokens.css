@@ -1,0 +1,134 @@
+/*
+ * Theme tokens. Light is the default on :root; dark is applied by adding the
+ * `dark` class to <html> (see src/theme.js). Tailwind maps these in tailwind.css.
+ * Values for the card-foreground, muted, muted-foreground and accent-foreground
+ * tokens are provisional and will be settled with the redesign.
+ */
+
+:root {
+  --background: #f7f5f0;
+  --foreground: #1c1b19;
+  --card: #ffffff;
+  --card-foreground: #1c1b19;
+  --muted: #efece5;
+  --muted-foreground: #6f6a5f;
+  --border: #e7e3da;
+  --accent: #2f5d50;
+  --accent-foreground: #ffffff;
+  --positive: #2f7d4f;
+  --negative: #b3412f;
+  --series-cash: #2f5d50;
+  --series-swish: #c27c2c;
+}
+
+.dark {
+  --background: #141412;
+  --foreground: #ecebe6;
+  --card: #1d1c1a;
+  --card-foreground: #ecebe6;
+  --muted: #24221f;
+  --muted-foreground: #a19c90;
+  --border: #2e2c28;
+  --accent: #7fb8a4;
+  --accent-foreground: #141412;
+  --positive: #6fc08d;
+  --negative: #e07a64;
+  --series-cash: #7fb8a4;
+  --series-swish: #e0a458;
+}
+
+/* Typography and global surfaces shared by the shell and the legacy screens. */
+html {
+  font-family: 'Inter', ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-feature-settings: 'cv11', 'ss01';
+  color-scheme: light;
+}
+html.dark {
+  color-scheme: dark;
+}
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+/* Chip palette for fund/party/category chips: 8 soft hues, each readable in both themes. */
+:root {
+  --chip-1-bg: #dbeafe;
+  --chip-1-fg: #1e40af;
+  --chip-2-bg: #dcfce7;
+  --chip-2-fg: #166534;
+  --chip-3-bg: #fef3c7;
+  --chip-3-fg: #92400e;
+  --chip-4-bg: #fce7f3;
+  --chip-4-fg: #9d174d;
+  --chip-5-bg: #ede9fe;
+  --chip-5-fg: #5b21b6;
+  --chip-6-bg: #cffafe;
+  --chip-6-fg: #155e75;
+  --chip-7-bg: #ffedd5;
+  --chip-7-fg: #9a3412;
+  --chip-8-bg: #e5e7eb;
+  --chip-8-fg: #374151;
+}
+.dark {
+  --chip-1-bg: #1e3a5f;
+  --chip-1-fg: #a5c8ff;
+  --chip-2-bg: #17402a;
+  --chip-2-fg: #8fe0ab;
+  --chip-3-bg: #4a3510;
+  --chip-3-fg: #f0c36d;
+  --chip-4-bg: #52203a;
+  --chip-4-fg: #f5a8cb;
+  --chip-5-bg: #35285c;
+  --chip-5-fg: #c9b6fb;
+  --chip-6-bg: #12404a;
+  --chip-6-fg: #8ae0ee;
+  --chip-7-bg: #52290f;
+  --chip-7-fg: #fbb88a;
+  --chip-8-bg: #33363d;
+  --chip-8-fg: #c4c8d0;
+}
+
+/* Currency accents: a foreign-currency wallet's rows and cards get a soft tint and a left bar in its own hue. */
+:root {
+  --cur-1: #3d6fa8;
+  --cur-2: #c27c2c;
+  --cur-3: #7a5aa6;
+  --cur-4: #a8456b;
+  --cur-5: #2a8a8a;
+  --cur-6: #8a8a3a;
+}
+.dark {
+  --cur-1: #7aa8dc;
+  --cur-2: #e0a458;
+  --cur-3: #b39ae0;
+  --cur-4: #e08aab;
+  --cur-5: #6cc4c4;
+  --cur-6: #c6c66a;
+}
+
+/* Colour palettes (Settings > Appearance). Each overrides the accent and surface tokens; "forest" is the default above. */
+[data-palette="ocean"] { --accent: #1f5f8b; --accent-foreground: #ffffff; --series-cash: #1f5f8b; --background: #f3f7fa; --muted: #e6eef4; --border: #dae5ec; }
+[data-palette="ocean"].dark { --accent: #6cb3de; --accent-foreground: #10171d; --series-cash: #6cb3de; --background: #10171d; --card: #192229; --muted: #1f2a33; --border: #2a3640; }
+[data-palette="indigo"] { --accent: #4a4fb3; --accent-foreground: #ffffff; --series-cash: #4a4fb3; --background: #f5f5fb; --muted: #eaeaf6; --border: #dedef0; }
+[data-palette="indigo"].dark { --accent: #9aa0f0; --accent-foreground: #13141d; --series-cash: #9aa0f0; --background: #13141d; --card: #1c1d2a; --muted: #232536; --border: #2f3146; }
+[data-palette="plum"] { --accent: #7a3b7a; --accent-foreground: #ffffff; --series-cash: #7a3b7a; --background: #f9f5f9; --muted: #f0e8f0; --border: #e6dae6; }
+[data-palette="plum"].dark { --accent: #d08fd0; --accent-foreground: #1a131a; --series-cash: #d08fd0; --background: #1a131a; --card: #241b24; --muted: #2b212b; --border: #382b38; }
+[data-palette="rose"] { --accent: #b0405f; --accent-foreground: #ffffff; --series-cash: #b0405f; --background: #fbf5f6; --muted: #f4e9ec; --border: #ead9de; }
+[data-palette="rose"].dark { --accent: #ee8fa8; --accent-foreground: #1c1316; --series-cash: #ee8fa8; --background: #1c1316; --card: #271b20; --muted: #2e2126; --border: #3c2b32; }
+[data-palette="terracotta"] { --accent: #b55a30; --accent-foreground: #ffffff; --series-cash: #b55a30; --background: #faf6f2; --muted: #f2eae2; --border: #e8dcd0; }
+[data-palette="terracotta"].dark { --accent: #eb9a70; --accent-foreground: #1b1512; --series-cash: #eb9a70; --background: #1b1512; --card: #262019; --muted: #2d251e; --border: #3b3027; }
+[data-palette="slate"] { --accent: #475569; --accent-foreground: #ffffff; --series-cash: #475569; --background: #f5f6f8; --muted: #e9ecf0; --border: #dde1e7; }
+[data-palette="slate"].dark { --accent: #9fb0c6; --accent-foreground: #121418; --series-cash: #9fb0c6; --background: #121418; --card: #1b1e24; --muted: #22262d; --border: #2e333b; }
+[data-palette="sky"] { --accent: #2f8fcf; --accent-foreground: #ffffff; --series-cash: #2f8fcf; --background: #f1f8fd; --muted: #e1f0fa; --border: #cfe5f4; }
+[data-palette="sky"].dark { --accent: #7cc4f0; --accent-foreground: #111a21; --series-cash: #7cc4f0; --background: #111a21; --card: #1a252d; --muted: #212f3a; --border: #2c3c49; }
+[data-palette="mint"] { --accent: #27a07b; --accent-foreground: #ffffff; --series-cash: #27a07b; --background: #f0faf6; --muted: #dff3ea; --border: #cde9dd; }
+[data-palette="mint"].dark { --accent: #7adcb8; --accent-foreground: #101a16; --series-cash: #7adcb8; --background: #101a16; --card: #192520; --muted: #202e28; --border: #2b3b34; }
+[data-palette="lavender"] { --accent: #8061d6; --accent-foreground: #ffffff; --series-cash: #8061d6; --background: #f7f4fd; --muted: #ece6f9; --border: #ddd3f2; }
+[data-palette="lavender"].dark { --accent: #b9a4f5; --accent-foreground: #16131f; --series-cash: #b9a4f5; --background: #16131f; --card: #201c2c; --muted: #272336; --border: #332e45; }
+[data-palette="coral"] { --accent: #e2634a; --accent-foreground: #ffffff; --series-cash: #e2634a; --background: #fef5f2; --muted: #fbe6df; --border: #f3d3c9; }
+[data-palette="coral"].dark { --accent: #f4a08c; --accent-foreground: #1d1411; --series-cash: #f4a08c; --background: #1d1411; --card: #281c18; --muted: #30221d; --border: #3e2e27; }
+[data-palette="sunshine"] { --accent: #d9a010; --accent-foreground: #2a1f00; --series-cash: #d9a010; --background: #fefbf0; --muted: #faf0cf; --border: #f0e4b8; }
+[data-palette="sunshine"].dark { --accent: #f0cb5a; --accent-foreground: #1c1810; --series-cash: #f0cb5a; --background: #1c1810; --card: #27221a; --muted: #2f2a1f; --border: #3d3628; }
+[data-palette="blush"] { --accent: #dc6f93; --accent-foreground: #ffffff; --series-cash: #dc6f93; --background: #fef5f8; --muted: #fae5ed; --border: #f1d3de; }
+[data-palette="blush"].dark { --accent: #f2a3bd; --accent-foreground: #1d1317; --series-cash: #f2a3bd; --background: #1d1317; --card: #281b21; --muted: #30222a; --border: #3e2e38; }

@@ -1,0 +1,43 @@
+# Cloudflare Worker: serves the Vite build (dist/) and the /api routes.
+# Local: `npm run worker` (wrangler dev, local D1 + R2 under .wrangler/state).
+# Remote: create the database once with `wrangler d1 create ledger`, then put its id below.
+name = "ledger"
+main = "worker/index.js"
+compatibility_date = "2025-09-01"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*", "/__scheduled"] # /__scheduled: local cron trigger (wrangler dev --test-scheduled)
+
+[[d1_databases]]
+binding = "DB"
+database_name = "ledger"
+# Local development does not need a real id. Replace with the id from `wrangler d1 create ledger` before deploying.
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
+# Nightly JSON backups per book: backups/<bookId>/<YYYY-MM-DD>.json (newest 30 kept).
+[[r2_buckets]]
+binding = "BACKUPS"
+bucket_name = "ledger-backups"
+
+# Document files: docs/<bookId>/<docId>. Create once with `wrangler r2 bucket create ledger-docs`.
+[[r2_buckets]]
+binding = "DOCS"
+bucket_name = "ledger-docs"
+
+# Daily job at 02:00 UTC: expired-session purge, and a backup when the newest one is BACKUP_EVERY_DAYS old.
+[triggers]
+crons = ["0 2 * * *"]
+
+[vars]
+APP_TIMEZONE = "UTC"
+# Default currency for new ledgers, funds, accounts and loan registers (existing data keeps its own currency).
+DEFAULT_CURRENCY = "USD"
+BACKUP_EVERY_DAYS = "10"
+# The live address. Locally .dev.vars overrides it (https://app.ledgerly.test under Warden).
+# Plain-http local runs also accept http://localhost:3100 (see worker/index.js).
+ALLOWED_ORIGIN = "https://ledger.example.workers.dev"

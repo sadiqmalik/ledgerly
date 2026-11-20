@@ -1,0 +1,13 @@
+WARDEN_USAGE=$(cat <<'USAGE'
+\033[33mUsage:\033[0m
+  account-create --email <email> --name "<name>"                 Creates a super administrator in the local D1 database
+  account-create -- --remote --email <email> --name "<name>"     Creates it in the live Cloudflare D1 database
+
+  The password is typed hidden at the prompt (min 12 characters). It is never a command argument.
+  Warden 0.16 rejects a bare --remote, so put -- before it.
+  --remote needs CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID in .env, and asks you to type 'live' first.
+
+\033[33mOptions:\033[0m
+  -h, --help        Display this help menu
+USAGE
+)

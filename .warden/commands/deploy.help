@@ -1,0 +1,8 @@
+WARDEN_USAGE=$(cat <<'USAGE'
+\033[33mUsage:\033[0m
+  deploy                    Builds the frontend, applies D1 migrations remotely and deploys the Worker
+
+\033[33mOptions:\033[0m
+  -h, --help        Display this help menu
+USAGE
+)

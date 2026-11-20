@@ -1,0 +1,36 @@
+{
+  "name": "ledgerly",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "axios": "^1.7.7",
+    "hono": "^4.13.14",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
+    "zod": "^3.25.76"
+  },
+  "scripts": {
+    "start": "npm run dev",
+    "dev": "concurrently -n web,worker \"npm run client\" \"npm run worker\"",
+    "stop": "lsof -ti:3100,8788 | xargs kill -9 2>/dev/null || true",
+    "client": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "wrangler d1 migrations apply ledger --local --persist-to .wrangler/state-test && node --test --test-concurrency=1 test/auth/*.test.js test/domain/*.test.js test/api/*.test.js",
+    "db:migrate:local": "wrangler d1 migrations apply ledger --local",
+    "worker": "mkdir -p dist && npm run db:migrate:local && wrangler dev --test-scheduled --ip 0.0.0.0 --port 8788",
+    "account:create": "node scripts/create-admin.js",
+    "account:reset-password": "node scripts/reset-password.js"
+  },
+  "devDependencies": {
+    "@hono/node-server": "^2.1.5",
+    "@tailwindcss/vite": "4.3.3",
+    "@vitejs/plugin-react": "6.1.2",
+    "concurrently": "^8.2.2",
+    "exceljs": "^4.4.0",
+    "supertest": "^7.3.1",
+    "tailwindcss": "4.3.3",
+    "vite": "8.3.5",
+    "wrangler": "^4.86.0"
+  }
+}

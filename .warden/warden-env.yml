@@ -1,0 +1,40 @@
+services:
+  app:
+    image: node:${NODE_VERSION:-22}-bookworm
+    hostname: ${WARDEN_ENV_NAME}-app
+    working_dir: /app
+    # Reinstall packages whenever package-lock.json changes (node_modules is a separate volume).
+    command: ["bash", "-lc", "cmp -s package-lock.json node_modules/.installed-lock || { npm ci && cp package-lock.json node_modules/.installed-lock; }; exec npm run dev"]
+    environment:
+      - NODE_ENV=development
+      - HOST=0.0.0.0
+      - BROWSER=none
+      - VITE_HMR_CLIENT_PORT=443
+      - WRANGLER_SEND_METRICS=false
+      - CHOKIDAR_USEPOLLING=true
+      - WATCHPACK_POLLING=true
+    volumes:
+      - ./:/app
+      - node_modules:/app/node_modules
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=${WARDEN_ENV_NAME}_default
+      - traefik.http.routers.${WARDEN_ENV_NAME}-web.rule=Host(`${TRAEFIK_SUBDOMAIN}.${TRAEFIK_DOMAIN}`)
+      - traefik.http.routers.${WARDEN_ENV_NAME}-web.tls=true
+      - traefik.http.routers.${WARDEN_ENV_NAME}-web.priority=1
+      - traefik.http.routers.${WARDEN_ENV_NAME}-web.service=${WARDEN_ENV_NAME}-web
+      - traefik.http.services.${WARDEN_ENV_NAME}-web.loadbalancer.server.port=3100
+      - traefik.http.routers.${WARDEN_ENV_NAME}-api.rule=Host(`${TRAEFIK_SUBDOMAIN}.${TRAEFIK_DOMAIN}`) && PathPrefix(`/api`)
+      - traefik.http.routers.${WARDEN_ENV_NAME}-api.tls=true
+      - traefik.http.routers.${WARDEN_ENV_NAME}-api.priority=10
+      - traefik.http.routers.${WARDEN_ENV_NAME}-api.service=${WARDEN_ENV_NAME}-api
+      # The Worker (wrangler dev on 8788) serves /api against the local D1 database.
+      - traefik.http.services.${WARDEN_ENV_NAME}-api.loadbalancer.server.port=${API_PORT:-8788}
+      # The same Worker on its own host, https://worker.<domain>.
+      - traefik.http.routers.${WARDEN_ENV_NAME}-worker.rule=Host(`worker.${TRAEFIK_DOMAIN}`)
+      - traefik.http.routers.${WARDEN_ENV_NAME}-worker.tls=true
+      - traefik.http.routers.${WARDEN_ENV_NAME}-worker.service=${WARDEN_ENV_NAME}-worker
+      - traefik.http.services.${WARDEN_ENV_NAME}-worker.loadbalancer.server.port=8788
+
+volumes:
+  node_modules:

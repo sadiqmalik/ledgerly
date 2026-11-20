@@ -1,0 +1,10 @@
+node_modules
+dist
+.wrangler
+.dev.vars
+.env
+*.xlsx
+tools/import-xlsx/out/
+import*.sql
+backups/
+.DS_Store

@@ -1,0 +1,15 @@
+WARDEN_USAGE=$(cat <<'USAGE'
+\033[33mUsage:\033[0m
+  d1 [sql]                  Runs SQL on the local D1 database (no SQL: lists tables)
+  d1 --remote [sql]         Runs SQL on the live Cloudflare D1 database (no SQL: lists tables)
+
+  Warden 0.16 rejects a bare --remote, so put -- before it:
+    warden d1 -- --remote "SELECT COUNT(*) AS n FROM users"
+
+  --remote needs CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID in .env.
+  Statements other than SELECT, PRAGMA, EXPLAIN and WITH ask you to type 'live' first.
+
+\033[33mOptions:\033[0m
+  -h, --help        Display this help menu
+USAGE
+)

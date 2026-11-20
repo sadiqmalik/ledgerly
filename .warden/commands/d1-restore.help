@@ -1,0 +1,12 @@
+WARDEN_USAGE=$(cat <<'USAGE'
+\033[33mUsage:\033[0m
+  d1-restore <file>         Replaces the LOCAL D1 database with a .sql file (a d1-backup or d1-pull export)
+
+  The current local database is saved first as backups/d1-ledger-<timestamp>-before-restore.sql.
+  A data-only file (no CREATE TABLE) is loaded after the migrations are applied.
+  Nothing on Cloudflare is touched. Pushing data to the live database is a manual step: docs/OPERATIONS.md section 6.
+
+\033[33mOptions:\033[0m
+  -h, --help        Display this help menu
+USAGE
+)

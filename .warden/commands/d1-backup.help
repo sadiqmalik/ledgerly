@@ -1,0 +1,17 @@
+WARDEN_USAGE=$(cat <<'USAGE'
+\033[33mUsage:\033[0m
+  d1-backup [label]              Exports the LOCAL D1 database to backups/d1-ledger-<timestamp>-<label>.sql
+  d1-backup --remote [label]     Exports the LIVE Cloudflare D1 database to backups/d1-ledger-remote-<timestamp>-<label>.sql
+                                 (read only: nothing on Cloudflare is changed)
+
+  Warden 0.16 rejects a bare --remote, so put -- before it:
+    warden d1-backup -- --remote before-change
+
+  --remote needs CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID in .env.
+  The label is just a name (not a path): backups/x.sql becomes the label x.
+  Each file gets a .sha256 beside it. Restore one locally with: warden d1-restore <file>
+
+\033[33mOptions:\033[0m
+  -h, --help        Display this help menu
+USAGE
+)

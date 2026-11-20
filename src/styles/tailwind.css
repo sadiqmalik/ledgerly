@@ -1,0 +1,42 @@
+@layer theme, base, components, utilities;
+
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+/* No preflight: importing it would restyle the existing UI. */
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-positive: var(--positive);
+  --color-negative: var(--negative);
+  --color-series-cash: var(--series-cash);
+  --color-series-swish: var(--series-swish);
+}
+
+/* Shell controls start from a clean slate (no preflight is loaded); utilities still win. */
+@layer base {
+  aside button,
+  header button,
+  [role='dialog'] nav button {
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
+  aside ul,
+  aside ol,
+  [role='dialog'] ul {
+    list-style: none;
+  }
+}

@@ -1,0 +1,14 @@
+WARDEN_USAGE=$(cat <<'USAGE'
+\033[33mUsage:\033[0m
+  d1-pull [label]           Copies the LIVE Cloudflare D1 database into the LOCAL one
+
+  Steps: backs up the local database (backups/...-before-pull.sql), exports the live one to
+  backups/d1-ledger-remote-<timestamp>-<label>.sql, replaces the local database with it, restarts the app.
+  The live database is only read. Needs CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID in .env.
+  Document files in R2 are not copied (only their records). Live accounts and sessions come along,
+  so you can sign in locally with your live password.
+
+\033[33mOptions:\033[0m
+  -h, --help        Display this help menu
+USAGE
+)
