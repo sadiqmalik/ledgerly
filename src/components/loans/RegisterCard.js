@@ -1,6 +1,7 @@
 import React from 'react';
 import Amount from '../common/Amount';
 import { RoleBadge } from './shared';
+import Stamp from '../common/Stamp';
 
 export default function RegisterCard({ register: r }) {
   const t = r.totals || { taken: 0, returned: 0, balance: 0 };
@@ -12,6 +13,7 @@ export default function RegisterCard({ register: r }) {
         <span className="flex shrink-0 items-center gap-1.5">{r.settled && <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">Settled</span>}<RoleBadge role={r.role} /></span>
       </div>
       <p className="mt-0.5 truncate text-sm text-muted-foreground">{r.lender} &rarr; {r.borrower}</p>
+      <Stamp createdAt={r.createdAt} updatedAt={r.updatedAt} className="text-xs text-muted-foreground" />
       <dl className="mt-3 space-y-1 text-sm">
         <div className="flex justify-between gap-2"><dt className="text-muted-foreground">Total taken</dt><dd><Amount minor={t.taken} currency={r.currency} /></dd></div>
         <div className="flex justify-between gap-2"><dt className="text-muted-foreground">Total returned</dt><dd><Amount minor={t.returned} currency={r.currency} /></dd></div>

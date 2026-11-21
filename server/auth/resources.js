@@ -2,7 +2,11 @@
 // independent of book roles: a request needs the book role AND the resource. Super administrators always have
 // every resource, so they cannot be locked out. src/auth/resources.mjs mirrors the lists below for the UI
 // (test/auth/resources.test.js keeps them in step).
-const RESOURCES = Object.freeze(['dashboard', 'ledger', 'reports', 'items', 'projects', 'documents', 'settings', 'loans']);
+const RESOURCES = Object.freeze(['dashboard', 'ledger', 'reports', 'items', 'projects', 'documents', 'diary', 'settings', 'loans']);
+// Opt-in pages are never part of "every page" for a regular account: a super administrator has to switch them on for
+// each admin (the Notebook is private to its owner, so nobody gets it by default).
+const OPT_IN_RESOURCES = Object.freeze(['diary']);
+const DEFAULT_ALL_RESOURCES = Object.freeze(RESOURCES.filter(key => !OPT_IN_RESOURCES.includes(key)));
 // What a new access code gets when it is created without an explicit list.
 const DEFAULT_CODE_RESOURCES = Object.freeze(['dashboard', 'ledger', 'reports', 'items']);
 
@@ -11,21 +15,26 @@ const DEFAULT_CODE_RESOURCES = Object.freeze(['dashboard', 'ledger', 'reports', 
 const LOOKUP_READERS = Object.freeze(['dashboard', 'ledger', 'reports', 'projects', 'settings']);
 const PARTY_READERS = Object.freeze([...LOOKUP_READERS, 'documents']);
 // Project id/name/kind only (no financial summaries), so entries, documents and reports can label projects.
-const PROJECT_NAME_READERS = Object.freeze(['dashboard', 'ledger', 'reports', 'projects', 'documents']);
+const PROJECT_NAME_READERS = Object.freeze(['dashboard', 'ledger', 'reports', 'projects', 'documents', 'diary']);
 
+// Access codes are strictly view-only, so they can never be given the Settings page (it is where things are edited),
+// whatever their saved list says.
+// They never get the private Notebook either.
+const CODE_RESOURCES = Object.freeze(RESOURCES.filter(key => key !== 'settings' && key !== 'diary'));
 const isResource = key => RESOURCES.includes(key);
 // Canonical order, no duplicates, unknown keys dropped.
 const normalizeResources = list => RESOURCES.filter(key => Array.isArray(list) && list.includes(key));
+const normalizeCodeResources = list => CODE_RESOURCES.filter(key => Array.isArray(list) && list.includes(key));
 
 // The pages an account may use. Unset (null/undefined) means full access for a regular account (existing
 // accounts keep working) and the defaults for an access code.
 const effectiveResources = account => {
   if (!account) return [];
   if (account.isSuperAdmin) return [...RESOURCES];
-  if (Array.isArray(account.resources)) return normalizeResources(account.resources);
+  if (Array.isArray(account.resources)) return account.accessCode ? normalizeCodeResources(account.resources) : normalizeResources(account.resources);
   // A present but non-array value is corrupt: grant nothing.
   if (account.resources !== undefined && account.resources !== null) return [];
-  return account.accessCode ? [...DEFAULT_CODE_RESOURCES] : [...RESOURCES];
+  return account.accessCode ? [...DEFAULT_CODE_RESOURCES] : [...DEFAULT_ALL_RESOURCES];
 };
 
 const hasResource = (account, key) => effectiveResources(account).includes(key);
@@ -53,6 +62,7 @@ const requiredResources = (method, rest, query = {}) => {
     case 'years': return parts.length === 1 && read ? ['ledger', 'projects', 'settings'] : ['settings'];
     case 'reports': return second === 'profit' ? ['dashboard', 'reports'] : ['reports'];
     case 'documents': return ['documents'];
+    // The Notebook lives under /api/diary (not under a book): worker/routes/diary.js checks the page and the ledger itself.
     case 'items': case 'item-locations': return ['items'];
     case 'profit':
       if (read) return ['ledger', 'settings'];
@@ -67,6 +77,6 @@ const requiredResources = (method, rest, query = {}) => {
 };
 
 module.exports = {
-  RESOURCES, DEFAULT_CODE_RESOURCES, LOOKUP_READERS, PARTY_READERS, PROJECT_NAME_READERS,
-  isResource, normalizeResources, effectiveResources, hasResource, hasAnyResource, requiredResources
+  RESOURCES, CODE_RESOURCES, OPT_IN_RESOURCES, DEFAULT_ALL_RESOURCES, DEFAULT_CODE_RESOURCES, LOOKUP_READERS, PARTY_READERS, PROJECT_NAME_READERS,
+  isResource, normalizeResources, normalizeCodeResources, effectiveResources, hasResource, hasAnyResource, requiredResources
 };

@@ -51,7 +51,7 @@ The app keeps **one continuous ledger per book**. Every entry has a date, and al
 2. Enter your email and password, then sign in.
 3. To sign out, use the account menu.
 
-The app signs you out after a period of no activity, and at the latest after a week. Passwords must be at least 12 characters. After **5 wrong passwords** in a row, sign-in is blocked for **15 minutes**. You see only the ledgers, loans and pages you have been given (section 11). See section 11 for password reset.
+The app signs you out after a period of no activity, and at the latest after a week. Passwords must be at least 6 characters. After **5 wrong passwords** in a row, sign-in is blocked for **15 minutes**. You see only the ledgers, loans and pages you have been given (section 11). See section 11 for password reset.
 
 ---
 
@@ -141,7 +141,7 @@ Loans have their own viewer, editor and admin roles, set separately from the led
 
 Entries and wallets in a currency other than the book's base currency (for example USD or SEK) have a soft tinted background and a coloured bar on the left, a different colour for each currency, so they stand out from base-currency rows. The same colour marks the currency badge on the Dashboard's Wallets card. The colours are theme tokens (`--cur-1` to `--cur-6` in `src/styles/tokens.css`) and which currency uses which is set in `src/utils/currencyStyle.js`, so a developer can change them; there is no setting screen for it yet.
 
-- **Base currency.** Every ledger has one base currency, for example PKR for a family ledger or SEK for a Swedish company. It is shown as a badge next to the ledger name in the top bar, and on the dashboard ("Usable · PKR"). You pick it from the currency list when you create the ledger. You can change it in **Settings › Ledger** only while the ledger has no entries.
+- **Base currency.** Every ledger has one base currency, for example PKR for a family ledger or SEK for a Swedish company. It is shown as a badge next to the ledger name in the top bar, and on the dashboard ("Usable · PKR"). You pick it from the currency list when you create the ledger. You can change it in **Settings › Details** only while the ledger has no entries.
 - **Every amount shows its currency**, for example `41,328 PKR` or `1,124 USD`, so you never have to guess.
 - **Wallets** are funds in any other currency. You can have as many as you need: a USD wallet, an SEK wallet, two EUR accounts, and so on.
   - To add one, go to **Dashboard › Wallets › Add wallet** (admin), or to **Settings › Funds › Add fund** and pick a currency.
@@ -268,7 +268,7 @@ Each project is a card in a grid, in the same style as the cards on the Loans pa
 
 **The ledger switcher and the Dashboard.** At the very top of the sidebar a small box lists your ledgers (the selected one is highlighted; a super administrator also sees **New ledger** there). The **Dashboard** is a single item right below it, because it shows the selected ledger.
 
-**Fold the sidebar groups.** Below the Dashboard, each group label (Money, Files and Admin Setup) is a button with a small arrow, and the pages of the group hang under it like the branches of a tree. Press the label to fold the group away or open it again. **Money** holds Ledger, Projects, Loans and Reports; **Admin Setup** holds Settings and, for super administrators, Users & ledgers. A small dot beside a folded group means the page you are on is inside it. The app remembers your choice in this browser. In the narrow icon-only sidebar the groups cannot be folded.
+**Fold the sidebar groups.** Below the Dashboard, each group label (Money, Files and Administration) is a button with a small arrow, and the pages of the group hang under it like the branches of a tree. Press the label to fold the group away or open it again. **Money** holds Ledger, Projects, Loans and Reports; **Administration** holds Settings and, for super administrators, Admins (admins, access codes, all ledgers and currencies). A small dot beside a folded group means the page you are on is inside it. The app remembers your choice in this browser. In the narrow icon-only sidebar the groups cannot be folded.
 
 1. **Filters** narrow the list by kind, fund, status and year. Each filter takes several values.
 2. The **Summary** shows the totals of the filtered or selected projects. On a desktop it is a sticky sidebar. On a phone it is a bar at the bottom.
@@ -400,7 +400,7 @@ The Ledger lists entries, one row per entry. It is the place to find, check and 
 ### Choosing the period
 
 1. **Year chips** show one chip per year, plus **All years**. Click a chip to see that year.
-2. For several years, use **multi**, or hold Ctrl (Windows) or Cmd (Mac) while you click. A lock on a chip means the year is closed.
+2. For several years, switch on **Select several years**, or hold Ctrl (Windows) or Cmd (Mac) while you click. A lock on a chip means the year is closed.
 3. **From / To** shows a date range instead of years.
 
 ### The main filters
@@ -447,6 +447,20 @@ To see a Closing figure, clear those filters or pick consecutive years.
 2. Change the fields, or tick **Exclude from totals** to keep the entry on record without counting it.
 3. Save, or delete the entry.
 
+### Duplicating a record
+
+To create something that is almost the same as an existing record, use **Duplicate** instead of typing it again. It opens the normal form already filled in with the original's values. Change what differs and save. Nothing is created until you save, and the original is never touched.
+
+| Where | How | What is copied |
+| --- | --- | --- |
+| Ledger entry (also inside a project) | Open the entry, then **Duplicate** | Everything (fund, side, party, category, project, quantity, price, rate, comment, count-in-totals, a project entry's extra fields). The date becomes today. Not copied: linked documents. Linked transfer legs have no Duplicate. |
+| Document | **Duplicate** on the row | Title, type, doctor, hospital, project, person, comment, linked entries. The date becomes today. The file is not copied: attach it in the form. |
+| Notebook entry | **Duplicate** on the card or in the category | Everything, dated today |
+| Item | **Duplicate** on the row | Name, location, owner, comment |
+| Loan entry | Open the entry, then **Duplicate** | Type, amount, lender, receiver, comment. The date becomes today. |
+| Loan | **Duplicate loan** on the loan page | Name (with "(copy)"), borrower, lender, description, currency. No entries and no sharing. |
+| Project | **Duplicate** on the project page | Name (with "(copy)"), kind, fund, dates, budget, extra fields. No entries. |
+
 Rules to know:
 
 - A **linked row** (a transfer or a conversion) is tagged. For a transfer you can change the date, the comment or the amount, and both rows change together. Anything else, including a conversion's rate, means deleting both rows and entering the transfer again. Deleting one leg deletes both.
@@ -465,6 +479,8 @@ Documents keep a log of reports and prescriptions, with the files attached.
 3. Attach a file if you have one.
 
 Accepted files are **PDF**, **JPEG**, **PNG**, **WebP** and **HEIC**, up to **10 MB**. Replacing a file replaces the old one. Deleting a document also removes its file.
+
+Documents appear as cards, the same as Loans, Projects and the Notebook: the title and type, the date, doctor and hospital, the person and project, the comment, linked entries and the file. Click a card to edit it, or use **Duplicate** and **Delete** on it.
 
 Search by title, comment, doctor or hospital. Filter by project, person, type or dates.
 
@@ -491,6 +507,34 @@ The entry panel opens only for editors, and only for entries in a year that is s
 - Deleting a document also removes its links. The entries are not changed.
 
 ---
+
+
+### The Notebook (notebooks, categories, notes and important dates)
+
+**Notebook** (in the Files group) is where you keep notes and dates worth remembering. It has three levels:
+
+1. **Notebooks**: create as many as you like (for example Family, Car). **New notebook** asks for a name and which ledger to link it to.
+2. **Categories** inside a notebook: a person or topic such as "Family" or "Car".
+3. **Entries** inside a category: notes and important dates.
+
+**Who can open a notebook.**
+
+- **Linked to a ledger**: it follows that ledger's access. A super admin, or an admin who has the Notebook page switched on and a role in that ledger, can open it. A **Viewer** only reads it (view only), an **Editor or Admin** can change it. Several notebooks can be linked to the same ledger.
+- **Not linked to a ledger** (super admins only): private to you. No other admin can see it, not even another super admin.
+- Access codes never see notebooks. Only the owner (or a ledger Admin or super admin) can delete a notebook, and only the owning super admin can change which ledger it is linked to.
+
+An entry is an ordinary **note** (a date, a title and a message, with **From** (who said it) and **For** (who it is for); names you used before are offered as suggestions) until you switch on **Important date**. An important date is a day to remember, such as an anniversary, a first service or a purchase date, with a **small note**; switch on **Repeats every year** for anniversaries and birthdays. It shows under Upcoming. This is separate from **Starred**, which only puts a star on any entry. The two switches sit side by side at the top of the form.
+
+Entries can also link to a project when the notebook is linked to a ledger. **Disable** hides an entry from the default list without deleting it, **Enable** brings it back, **Duplicate** copies it into a new pre-filled form.
+
+**Categories** are a person or a topic, such as "Family" or "Car". Type a new name in the Category box of any entry and it is created for you, or use **New category**. Each name is used once ("car", "Car" and "CAR" are the same category, and extra spaces are dropped). Open a category to see its **main note** at the top and all its dates and notes as a timeline (oldest first, or switch to newest first). **Add date** and **Add note** on that page start with the category already chosen. Deleting a category keeps its entries; they just have no category.
+
+The Notebook page has two views:
+
+- **Categories**: one card per category with its counts and the next date coming up.
+- **All entries**: every entry as cards, filtered by search, category, project, dates, **Show** (Active, Disabled, All), **Type** (Notes, Dates) and **Starred only**.
+
+**Upcoming** at the top of the page lists the important dates in the next 30 days, soonest first, each with a countdown ("today", "tomorrow", "in 12 days"). Dates within a week are highlighted. A yearly date comes round again every year (29 February falls on 28 February in other years). A date that does not repeat appears until it has passed. A disabled entry is not shown. The countdown uses the date on your device.
 
 ## 9. Reports
 
@@ -542,9 +586,13 @@ Notes:
 
 ### Lists, cards and entry counts
 
-**Funds**, **Accounts**, **Categories** and **People** show their records as **cards** (several per row, with the name as the card title and a round letter badge) or as a **table**. The list layout choice decides which (see **Appearance**). **Members** (Settings › Ledger), **Profit** rates and **Years** always use cards.
+**Funds**, **Accounts**, **Categories** and **People** show their records as **cards** (several per row, with the name as the card title and a round letter badge) or as a **table**. The list layout choice decides which (see **Appearance**). **Members** (Settings › Details), **Profit** rates and **Years** always use cards.
 
 Each record in Funds, Accounts, Categories and People shows how many entries use it, across all years. Transfers count; deleted entries do not. Click the number to open the Ledger filtered to that record, for all years. An **Account** counts the entries of its funds. An account with no funds attached shows **No entries**, because entries belong to funds. The number is shown as plain text if you cannot open the Ledger.
+
+### Page names
+
+**Settings › Page names** (ledger admins) lets you rename the main pages: Ledger, Projects, Loans, Reports, Documents, Notebook and Item Vault. Type a name in a page's box and press **Save names**. The new name shows in the sidebar and as the page title, for everyone on this ledger. Leave a box empty, or press **Use default**, to go back to its default name, and **Reset all to defaults** clears every alias. Only the displayed names change; the pages, links and permissions are the same.
 
 ### Appearance
 
@@ -576,7 +624,7 @@ Backups are also made for you every night. See the FAQ.
 - **Members**: add a person by their email and choose a role (viewer, editor or admin). Remove a member with **Remove**. See section 11.
 - **Deactivate ledger** (admin): hides the ledger from everyone, including its members. Nothing is deleted and no data is lost. Type the ledger's name to confirm. Only a super administrator can bring it back.
 - **Ledger is inactive** (super administrator): when a ledger is deactivated, this box shows that it is inactive, with a **Reactivate** button. Type the ledger's name to confirm. Members can see the ledger again straight away.
-- A ledger that is deleted permanently is different: that is done by a super administrator from **Users & ledgers > Ledgers**, see section 13.
+- A ledger that is deleted permanently is different: that is done by a super administrator from **Administration > All ledgers**, see section 13.
 
 ---
 
@@ -595,23 +643,33 @@ Backups are also made for you every night. See the FAQ.
 | See every ledger | | | | Yes |
 | Create ledgers | | | | Yes |
 | Deactivate a ledger (hidden, nothing deleted) | | | Yes | Yes |
-| Reactivate, or delete permanently, a deactivated ledger | | | | Yes |
+| Enable a disabled ledger, or delete any ledger (with all its data) | | | | Yes |
 | Create sign-in accounts | | | | Yes |
 | Add, switch off, rename and delete currencies (Admin, Currencies) | | | | Yes |
 
 ### Who can see what
 
-Access is set in three separate places:
+### Admin types
 
-- **Ledgers**: a viewer, editor or admin role in each ledger (the Members list).
-- **Loans**: a viewer, editor or admin role on each loan.
-- **Pages**: the pages a person may open (Dashboard, Ledger, Reports, Item tracker, Projects, Documents, Settings, Loans).
+Everyone who signs in with an email and password is an **admin** of one of two types:
 
-A super administrator sets these on the **Admin** page (**Users & ledgers** in the sidebar). Each user card has:
+- **Super admin**: has everything. Every ledger, every loan and every page, so they need no specific access, and they are the only ones who can open **Admins** (create admins, access codes, all ledgers, currencies). Create ledgers, delete them, and manage other admins.
+- **Normal admin**: has only what a super admin gives them, so you can make one admin manage one ledger and another admin manage several, or one admin manage a single loan and another all of them.
 
-1. **Edit access**: the ledger roles.
-2. **Edit loan access**: the role on each loan (No access, Viewer, Editor or Admin).
-3. **Edit pages**: which pages the user may open. A user who has no page list sees every page, including Loans, but sees a loan only after being given access to it.
+The sidebar has one **Administration** group. It holds **Settings** (the open ledger's setup, for admins who may use it) and, for super administrators only, **Admins**.
+
+Access for a normal admin is set in three places:
+
+- **Ledgers**: a viewer, editor or admin role in each ledger they may use (a ledger they have no role in stays closed to them).
+- **Loans**: a viewer, editor or admin role on each loan they may use.
+- **Pages**: the pages they may open (Dashboard, Ledger, Reports, Item Vault, Projects, Documents, Notebook, Settings, Loans). Everything except the **Notebook** is on by default for a regular admin; switch the Notebook on for the ones who should have one. They then see the notebooks linked to ledgers they have a role in (a Viewer reads, an Editor or Admin changes).
+
+A super administrator sets these on the **Admins** page. **Add admin** opens a dialog with a **Super admin** switch (on: nothing else to choose; off: pick ledgers, loans and pages). Each admin card shows its type and has:
+
+1. **Edit ledgers**: the ledger roles.
+2. **Edit loans**: the role on each loan (No access, Viewer, Editor or Admin).
+3. **Edit pages**: which pages the admin may open.
+4. **Make super admin** or **Make normal admin**: change the type. They are signed out and must sign in again. You cannot change your own type, and the last active super admin cannot be demoted.
 
 The **Loans** page is new. Whoever creates a loan becomes its admin. A loan admin can change that loan, but cannot give another user access to it; only a super administrator can.
 
@@ -622,7 +680,7 @@ To let people who sign in with an **access code** read a loan, open the loan, pr
 There is **no in-app "invite" yet**. A new person needs an account first, then a role in the ledger.
 
 1. **Super admin creates the account.** This is done from the command line today, with `warden account-create --email ... --name ...` (see OPERATIONS.md). The person gets a first password from the super admin.
-2. **A ledger admin adds the person.** Go to **Settings › Ledger › Members**, type the person's email, choose **viewer**, **editor** or **admin**, and press **Add**. They can now sign in and see that ledger.
+2. **A ledger admin adds the person.** Go to **Settings › Members**, type the person's email, choose **viewer**, **editor** or **admin**, and press **Add**. They can now sign in and see that ledger.
 
 To change a role, change it in the Members list. To remove access, press **Remove** and confirm in the box that opens. An admin cannot change their own role; another admin must do it.
 
@@ -634,7 +692,7 @@ To change a role, change it in the Members list. To remove access, press **Remov
 
 ### Resetting a password
 
-There is no "forgot password" link. Ask your super admin, who runs `warden account-reset-password` (see OPERATIONS.md) and gives you a new password. Passwords must be at least 12 characters.
+There is no "forgot password" link. Ask your super admin, who runs `warden account-reset-password` (see OPERATIONS.md) and gives you a new password. Passwords must be at least 6 characters.
 
 ---
 
@@ -701,7 +759,7 @@ A new ledger is a separate book, for example one for Company X. Each book has it
 2. Enter a name and pick a base currency from the list (for example SEK for a Swedish company). The list starts on the install's default currency (`DEFAULT_CURRENCY`, USD unless the administrator set another).
 3. Press **Create ledger**.
 4. Use the top bar to switch to it.
-5. Add its members in **Settings › Ledger › Members** (section 11).
+5. Add its members in **Settings › Members** (section 11).
 
 ### What it starts with
 
@@ -713,13 +771,13 @@ Then add your own funds and accounts in Settings.
 
 ### Deactivating, reactivating and deleting a ledger
 
-A ledger is never removed in one step. There are three stages:
+Administration › All ledgers shows every ledger as a card with **Open**, **Settings**, **Disable** (or **Enable** when it is off) and **Delete**.
 
-1. **Deactivate** (an admin, from **Settings › Ledger**). Press **Deactivate ledger**, type the ledger's name and confirm. The ledger disappears for everyone, including its members. Nothing is deleted.
-2. **Reactivate** (a super administrator only). The deactivated ledger stays visible to super administrators, marked **Inactive**. Open **Settings › Ledger** (it shows "Ledger is inactive" and a **Reactivate** button) or **Users & ledgers › Ledgers**. Type the name and confirm. Everything comes back as it was.
-3. **Delete permanently** (a super administrator only, from **Users & ledgers › Ledgers**). The button appears only for an inactive ledger, and only when it has no entries and no documents. Type the name and confirm. This cannot be undone.
+1. **Deactivate** (an admin, from **Settings › Details**). Press **Deactivate ledger**, type the ledger's name and confirm. The ledger disappears for everyone, including its members. Nothing is deleted.
+2. **Enable** (a super administrator only; the Settings box calls it Reactivate). The deactivated ledger stays visible to super administrators, marked **Inactive**. Open **Settings › Details** (it shows "Ledger is inactive" and a **Reactivate** button) or **Administration › All ledgers**. Type the name and confirm. Everything comes back as it was.
+3. **Delete** (a super administrator only, from **Administration › All ledgers**). It works on any ledger, active or not, and removes the ledger with all its entries, documents (and their files), projects, funds, people, diary notes and settings. Type the name and confirm. This cannot be undone, so take a backup first. To hide a ledger without losing anything, use **Disable**.
 
-If a ledger still has entries or documents, empty it first, then delete it.
+**Disable** takes the ledger out of the side panel and away from its members. **Enable** brings it back.
 
 ---
 
@@ -754,8 +812,7 @@ If you kept your money in a spreadsheet, create your funds and categories in **S
 | **409** "Cannot delete XYZ: it is used by ..." | You tried to delete a currency that a ledger, fund, account, loan or entry still uses. | Switch it off instead. |
 | **409** "Category is used by entries" | You tried to delete a category that entries use. | Move those entries to another category, or keep the category. |
 | **409** "Cannot change the base currency of a book that has entries" | The ledger has entries, so its base currency is locked. | Keep the current currency. |
-| **409** "Cannot delete a book that has entries or documents" | The ledger still has data. | Keep the ledger, or remove its entries and documents first. |
-| **409** "Deactivate the ledger first, then delete it permanently." | You tried to delete a ledger that is still active. | Deactivate it first, then delete it. |
+| **400** "Type the ledger name to confirm the delete." | The name typed in the delete box did not match. | Type the ledger name exactly. |
 | **409** "Project has entries" | You tried to delete a project that has entries. | Close the project instead. |
 | **409** "Year already closed" | You tried to close a year that is already closed. | Nothing to do. Check Settings › Years. |
 | **409** "Name already exists" | Another row has that name. | Pick a different name. |
@@ -799,7 +856,7 @@ The app makes a backup every night at 02:00 UTC and stores it in private cloud s
 
 ### How do I add someone new?
 
-A super admin creates their sign-in account from the command line, then a ledger admin adds them by email in **Settings › Ledger › Members** with a role. See section 11.
+A super admin creates their sign-in account from the command line, then a ledger admin adds them by email in **Settings › Members** with a role. See section 11.
 
 ### I forgot my password. What now?
 

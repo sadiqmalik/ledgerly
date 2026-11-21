@@ -14,6 +14,7 @@ const { registerLedgerRoutes } = require('./routes/ledger');
 const { registerMasterRoutes } = require('./routes/masters');
 const { registerReportRoutes } = require('./routes/reports');
 const { registerDocumentRoutes } = require('./routes/documents');
+const { registerDiaryRoutes } = require('./routes/diary');
 const { registerItemRoutes } = require('./routes/items');
 const { registerExportRoutes } = require('./routes/export');
 const optional = require('../server/optionalModules');
@@ -148,6 +149,7 @@ const createApi = ({ repo, auth, allowedOrigin = 'https://app.ledgerly.test', en
   registerMasterRoutes(app, { repo });
   registerReportRoutes(app, { repo });
   registerDocumentRoutes(app, { repo, env });
+  registerDiaryRoutes(app, { repo });
   registerItemRoutes(app, { repo });
   registerExportRoutes(app, { repo });
   for (const register of optional.routes) register(app, { repo, env });

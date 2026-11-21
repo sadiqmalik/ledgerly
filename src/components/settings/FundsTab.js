@@ -3,7 +3,8 @@ import Amount from '../common/Amount';
 import CurrencySelect from '../common/CurrencySelect';
 import CurrencyLabel from '../common/CurrencyLabel';
 import CrudTab from './CrudTab';
-import { useResource, Field, inputCls } from './ui';
+import { useResource, Field, Toggle, inputCls } from './ui';
+import Select from '../common/Select';
 
 const KINDS = ['general', 'reserved', 'custodial', 'investment', 'memo'];
 const DEFAULT_COLOR = '#2f5d50';
@@ -75,20 +76,20 @@ export default function FundsTab({ bookId, canEdit }) {
               <input className={inputCls} value={d.name} onChange={e => update({ name: e.target.value })} />
             </Field>
             <Field label="Kind">
-              <select className={inputCls} value={d.kind} onChange={e => update({ kind: e.target.value })}>
+              <Select className={inputCls} value={d.kind} onChange={e => update({ kind: e.target.value })}>
                 {KINDS.map(k => <option key={k} value={k}>{k}</option>)}
-              </select>
+              </Select>
             </Field>
             <Field label="Currency">
               <CurrencySelect className={inputCls} value={d.currency} onChange={currency => update({ currency })} />
             </Field>
             <Field label="Account">
-              <select className={inputCls} value={d.holderId} onChange={e => update({ holderId: e.target.value })}>
+              <Select className={inputCls} value={d.holderId} onChange={e => update({ holderId: e.target.value })}>
                 <option value="">None</option>
                 {holderOptions.map(h => (
                   <option key={h.id} value={h.id}>{h.name}{h.active ? '' : ' (inactive)'}</option>
                 ))}
-              </select>
+              </Select>
             </Field>
             <Field label="Colour">
               <input
@@ -98,15 +99,7 @@ export default function FundsTab({ bookId, canEdit }) {
                 onChange={e => update({ color: e.target.value })}
               />
             </Field>
-            <label className="flex items-center gap-2 self-end pb-2 text-sm text-foreground">
-              <input
-                type="checkbox"
-                className="size-4 accent-[var(--accent)]"
-                checked={d.isReserved}
-                onChange={e => update({ isReserved: e.target.checked })}
-              />
-              <span>Reserved fund</span>
-            </label>
+            <div className="self-end pb-1.5"><Toggle compact label="Reserved fund" checked={d.isReserved} onChange={on => update({ isReserved: on })} /></div>
           </div>
         );
       }}

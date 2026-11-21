@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { useLedger } from '../../hooks/LedgerContext';
 import PivotView from './PivotView';
 import { useGet, Status, Field, ctl, Segmented } from './shared';
+import { Toggle } from '../settings/ui';
+import Select from '../common/Select';
 
 const THIS_YEAR = new Date().getFullYear();
 
@@ -10,8 +12,8 @@ export function YearRange({ from, to, setFrom, setTo }) {
   for (let y = THIS_YEAR; y >= THIS_YEAR - 30; y--) years.push(y);
   return (
     <>
-      <Field label="From"><select style={ctl} value={from} onChange={e => setFrom(Number(e.target.value))}>{years.map(y => <option key={y}>{y}</option>)}</select></Field>
-      <Field label="To"><select style={ctl} value={to} onChange={e => setTo(Number(e.target.value))}>{years.map(y => <option key={y}>{y}</option>)}</select></Field>
+      <Field label="From"><Select style={ctl} value={from} onChange={e => setFrom(Number(e.target.value))}>{years.map(y => <option key={y}>{y}</option>)}</Select></Field>
+      <Field label="To"><Select style={ctl} value={to} onChange={e => setTo(Number(e.target.value))}>{years.map(y => <option key={y}>{y}</option>)}</Select></Field>
     </>
   );
 }
@@ -34,9 +36,7 @@ export default function Pivot() {
           <Segmented label="Direction" value={direction} onChange={setDirection} options={[['dr', 'Spent'], ['cr', 'Received'], ['net', 'Net']]} />
         </Field>
         <YearRange from={from} to={to} setFrom={setFrom} setTo={setTo} />
-        <label className="text-sm" style={{ display: 'inline-flex', gap: 6, alignItems: 'center', minHeight: 34 }}>
-          <input type="checkbox" checked={memo} onChange={e => setMemo(e.target.checked)} /> Include memo
-        </label>
+        <Toggle compact label="Include memo" checked={memo} onChange={setMemo} />
       </div>
       <Status state={state}>{pivot => <PivotView pivot={pivot} title="Per year, top 6 plus Other" />}</Status>
     </div>

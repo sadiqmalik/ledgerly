@@ -15,8 +15,10 @@ const schemas = {
     password: z.string().min(1).max(200),
     memberships: z.array(membership).max(50).default([]),
     loanMemberships: z.array(loanMembership).max(200).default([]),
-    resources: z.array(z.enum(RESOURCES)).max(RESOURCES.length).nullable().optional()
+    resources: z.array(z.enum(RESOURCES)).max(RESOURCES.length).nullable().optional(),
+    isSuperAdmin: z.boolean().optional()
   }),
+  type: z.object({ isSuperAdmin: z.boolean() }).strict(),
   memberships: z.object({ memberships: z.array(membership).max(50) }),
   loanMemberships: z.object({ loanMemberships: z.array(loanMembership).max(200) }),
   resources: z.object({ resources: z.array(z.enum(RESOURCES)).max(RESOURCES.length).nullable() }).strict(),
@@ -135,17 +137,35 @@ const createAccountAdmin = (store, { accounts, auth }) => {
 
     async create(actor, body) {
       const data = parse(schemas.create, body);
+      // A super administrator has every ledger, loan and page, so they get no specific access of their own.
+      const isSuper = Boolean(data.isSuperAdmin);
+      if (isSuper) { data.memberships = []; data.loanMemberships = []; data.resources = null; }
       await checkBooks(data.memberships);
       await checkRegisters(data.loanMemberships);
       const account = await accounts.create({
         email: data.email,
         name: data.name,
         password: data.password,
+        isSuperAdmin: isSuper,
         memberships: data.memberships,
         loanMemberships: data.loanMemberships,
         resources: Array.isArray(data.resources) ? normalizeResources(data.resources) : null
       });
       await recordEvent(actor, 'create', normalizeEmail(data.email), { memberships: data.memberships, loanMemberships: data.loanMemberships, resources: data.resources ?? null });
+      return toView(await findAccount(account.id));
+    },
+
+    // Makes an account a super administrator (everything, no specific access needed) or a normal admin (only the
+    // access it is given). Nobody can change their own type, and the last active super administrator stays one.
+    async setType(actor, id, body) {
+      const data = parse(schemas.type, body);
+      const account = await findAccount(id);
+      if (account.id === actor.id) throw new AppError('You cannot change your own admin type', 409);
+      if (Boolean(account.isSuperAdmin) === data.isSuperAdmin) return toView(account);
+      if (!data.isSuperAdmin) await keepOneSuperAdmin(account);
+      await store.accounts.update(account.id, { isSuperAdmin: data.isSuperAdmin, updatedAt: new Date().toISOString() });
+      await store.sessions.deleteByAccount(account.id); // sign them in again with the new rights
+      await recordEvent(actor, 'admin-type', account.email, { isSuperAdmin: data.isSuperAdmin });
       return toView(await findAccount(account.id));
     },
 

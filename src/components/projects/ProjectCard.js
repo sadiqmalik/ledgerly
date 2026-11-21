@@ -2,6 +2,7 @@ import React from 'react';
 import Amount from '../common/Amount';
 import FundDot from '../common/FundDot';
 import { kindBadge, dateRange, BudgetBar } from './shared';
+import Stamp from '../common/Stamp';
 
 // One project as a boxed card, the same style as the loan cards: title and badges, a muted subtitle, a small table of
 // figures with the net spent as the bold total line, then the budget bar. The whole card opens the project; the
@@ -27,6 +28,7 @@ export default function ProjectCard({ project: p, fund, base, currency, foreign,
         <span className={kindBadge}>{p.kind}</span>
       </p>
       <p className="text-xs text-muted-foreground">{dateRange(p)} &middot; {t.count} {t.count === 1 ? 'entry' : 'entries'}</p>
+      <Stamp createdAt={p.createdAt} updatedAt={p.updatedAt} className="text-xs text-muted-foreground" />
       <dl className="mt-3 space-y-1 text-sm">
         <div className="flex justify-between gap-2"><dt className="text-muted-foreground">Out (debit)</dt><dd><Amount currency={base} minor={t.out || 0} /></dd></div>
         <div className="flex justify-between gap-2"><dt className="text-muted-foreground">In (credit)</dt><dd><Amount currency={base} minor={t.in || 0} /></dd></div>

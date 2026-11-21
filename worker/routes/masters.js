@@ -62,7 +62,7 @@ const registerMasterRoutes = (app, { repo }) => {
     const keys = Object.keys(r.fields);
     const shape = Object.fromEntries(keys.map(k => [k, r.fields[k].zod.optional()]));
     const schema = z.object(shape).strict();
-    const map = row => ({ id: row.id, ...Object.fromEntries(keys.map(k => [k, fromDb(r.fields[k], row[r.fields[k].col])])) });
+    const map = row => ({ id: row.id, ...Object.fromEntries(keys.map(k => [k, fromDb(r.fields[k], row[r.fields[k].col])])), createdAt: row.created_at ?? null, updatedAt: row.updated_at ?? null });
     const url = `/api/books/:b/${path}`;
 
     const checkRefs = async (b, data) => {

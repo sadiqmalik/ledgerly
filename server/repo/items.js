@@ -1,8 +1,8 @@
 // Item tracker queries: items and reusable locations, always scoped by book_id.
-const mapLocation = r => ({ id: r.id, name: r.name, place: r.place, itemCount: r.item_count ?? 0 });
+const mapLocation = r => ({ id: r.id, name: r.name, place: r.place, itemCount: r.item_count ?? 0, createdAt: r.created_at ?? null, updatedAt: r.updated_at ?? null });
 const mapItem = r => ({
   id: r.id, name: r.name, comment: r.comment, locationId: r.location_id, locationName: r.location_name,
-  place: r.place, owner: r.owner, updatedAt: r.updated_at
+  place: r.place, owner: r.owner, createdAt: r.created_at ?? null, updatedAt: r.updated_at ?? null
 });
 
 const ITEM_SELECT = `SELECT i.*, l.name AS location_name, l.place AS place
@@ -43,6 +43,10 @@ const createItemsRepo = ledger => ({
   },
   async locationByName(bookId, name) {
     return ledger.first('SELECT * FROM item_locations WHERE book_id = ? AND LOWER(name) = LOWER(?)', bookId, name);
+  },
+  async getLocation(bookId, id) {
+    const r = await ledger.first('SELECT * FROM item_locations WHERE id = ? AND book_id = ?', id, bookId);
+    return r ? mapLocation(r) : null;
   },
   async insertLocation(bookId, id, d) {
     await ledger.run('INSERT INTO item_locations (id, book_id, name, place) VALUES (?, ?, ?, ?)', id, bookId, d.name, d.place ?? null).run();

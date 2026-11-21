@@ -73,7 +73,7 @@ const registerItemRoutes = (app, { repo }) => {
     await checkName(b, d.name);
     const newId = crypto.randomUUID();
     await R.insertLocation(b, newId, d);
-    return c.json({ id: newId, name: d.name, place: d.place ?? null, itemCount: 0 }, 201);
+    return c.json(await R.getLocation(b, newId), 201);
   });
 
   app.put(`${locs}/:id`, async c => {

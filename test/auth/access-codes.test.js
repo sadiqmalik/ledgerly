@@ -120,6 +120,18 @@ describe('access codes', () => {
     assert.equal((await ctx.api.post('/api/admin/access-codes/missing/revoke').send({})).status, 404);
   });
 
+  it('restores a revoked code so the same code works again', async () => {
+    const created = await createCode();
+    assert.equal((await ctx.api.post(`/api/admin/access-codes/${created.id}/restore`).send({})).status, 400); // not revoked
+    await ctx.api.post(`/api/admin/access-codes/${created.id}/revoke`).send({});
+    assert.equal((await signIn(created.code, '10.0.0.3')).status, 401);
+    const restored = await ctx.api.post(`/api/admin/access-codes/${created.id}/restore`).send({});
+    assert.equal(restored.status, 200);
+    assert.equal(restored.body.accessCode.revokedAt, null);
+    assert.equal((await cookieOf(await signIn(created.code, '10.0.0.4')).get(`${base}/summary`)).status, 200);
+    assert.equal((await ctx.api.post('/api/admin/access-codes/missing/restore').send({})).status, 404);
+  });
+
   it('deletes an active code permanently: signs out its session, refuses the code, keeps the audit trail', async () => {
     const created = await createCode();
     const other = await createCode([BOOK], 'Other');

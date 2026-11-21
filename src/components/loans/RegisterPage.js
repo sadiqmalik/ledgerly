@@ -3,7 +3,7 @@ import { api } from '../../services/dataAPI';
 import Amount from '../common/Amount';
 import ConfirmDialog from '../common/ConfirmDialog';
 import { errorMessage } from '../common/format';
-import { inputCls, btnPrimary, btnSecondary, btnDanger, Segmented } from '../settings/ui';
+import { inputCls, btnPrimary, btnSecondary, btnDanger, EitherSwitches } from '../settings/ui';
 import EntryDialog from './EntryDialog';
 import RegisterDialog from './RegisterDialog';
 import { RoleBadge, Tile, canEdit, canAdmin } from './shared';
@@ -29,6 +29,7 @@ export default function RegisterPage({ registerId }) {
   const [to, setTo] = useState('');
   const [entryDlg, setEntryDlg] = useState(null);   // { entry } (entry null = add)
   const [editReg, setEditReg] = useState(false);
+  const [dupReg, setDupReg] = useState(false);
   const [confirm, setConfirm] = useState(null);     // { type: 'entry'|'register', entry? }
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState('');
@@ -171,6 +172,7 @@ export default function RegisterPage({ registerId }) {
                   : <button type="button" className={btnSecondary} disabled={!hasEntries || tot.balance !== 0} aria-describedby="loan-settle-hint"
                       onClick={() => { setActionError(''); setConfirm({ type: 'settle' }); }}>Mark as settled</button>}
                 <button type="button" className={btnSecondary} onClick={() => setEditReg(true)}>Edit loan</button>
+                <button type="button" className={btnSecondary} onClick={() => setDupReg(true)}>Duplicate loan</button>
                 <button type="button" className={btnDanger} disabled={hasEntries} aria-describedby={hasEntries ? 'loan-del-hint' : undefined}
                   onClick={() => { setActionError(''); setConfirm({ type: 'register' }); }}>Delete loan</button>
               </div>
@@ -182,9 +184,9 @@ export default function RegisterPage({ registerId }) {
         </header>
 
           <div className="space-y-2 rounded-xl border border-border bg-card p-3">
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-start gap-2">
               <input type="search" aria-label="Search entries" className={`${inputCls} !mt-0 min-w-[12rem] flex-1`} value={q} onChange={e => setQ(e.target.value)} placeholder="Search comment, receiver or lender" />
-              <Segmented label="Entry type" value={kind} onChange={setKind} options={[['all', 'All'], ['taken', 'Taken'], ['returned', 'Returned']]} />
+              <EitherSwitches labelBelow label="Entry type" value={kind === 'all' ? '' : kind} onChange={v => setKind(v || 'all')} options={[['taken', 'Taken'], ['returned', 'Returned']]} />
               <button type="button" aria-expanded={datesOpen || Boolean(from || to)} className={btnSecondary} onClick={() => setDatesOpen(o => !o)}>Dates{from || to ? ' •' : ''}</button>
               {writable && <button type="button" className={`${btnPrimary} ml-auto`} onClick={() => setEntryDlg({ entry: null })}>Add entry</button>}
             </div>
@@ -237,10 +239,12 @@ export default function RegisterPage({ registerId }) {
       </div>
 
       {entryDlg && (
-        <EntryDialog register={reg} entry={entryDlg.entry} receivers={receiverNames} onClose={() => setEntryDlg(null)}
+        <EntryDialog register={reg} entry={entryDlg.entry} copyOf={entryDlg.copy} receivers={receiverNames} onClose={() => setEntryDlg(null)}
           onSaved={() => { setEntryDlg(null); refresh(); }}
+          onDuplicate={() => setEntryDlg({ entry: null, copy: entryDlg.entry })}
           onDelete={entryDlg.entry ? () => { setConfirm({ type: 'entry', entry: entryDlg.entry }); } : undefined} />
       )}
+      {dupReg && <RegisterDialog copyOf={reg} onClose={() => setDupReg(false)} onSaved={r => { setDupReg(false); window.location.hash = `#/loans/${r.id}`; }} />}
       {editReg && <RegisterDialog register={reg} onClose={() => setEditReg(false)} onSaved={() => { setEditReg(false); refresh(); }} />}
       {confirm && confirm.type === 'settle' && (
         <ConfirmDialog title="Mark loan as settled" message={`Mark "${reg.name}" as settled? Its entries become read only until you reopen it.`}

@@ -6,10 +6,11 @@ const FIELDS = 'input:not([disabled]):not([type="hidden"]), select:not([disabled
 // Open modals, oldest first. Only the last one reacts to Escape.
 const stack = [];
 
-// Dialog: centred modal on desktop, full-width sheet on phones. `side` makes it a right-hand panel on desktop.
+// Dialog: centred modal on desktop, full-width sheet on phones. `side` makes it a right-hand panel on desktop;
+// `wide` gives a roomier dialog for long forms (admin users and access codes).
 // Focus moves to the first field on open, is trapped inside, and returns to the opener on close.
 // A backdrop click asks for confirmation when anything in the form was changed.
-export default function Modal({ title, onClose, side = false, children }) {
+export default function Modal({ title, onClose, side = false, wide = false, children }) {
   const dialog = useRef(null);
   const dirty = useRef(false);
   const closeRef = useRef(onClose);
@@ -61,7 +62,7 @@ export default function Modal({ title, onClose, side = false, children }) {
       onMouseDown={backdrop}>
       <div ref={dialog} role="dialog" aria-modal="true" aria-label={title}
         onInput={() => { dirty.current = true; }}
-        className={`bg-card text-card-foreground w-full max-h-[92vh] overflow-y-auto p-4 md:p-5 rounded-t-2xl ${side ? 'md:max-w-md md:max-h-none md:rounded-none md:border-l md:border-border' : 'md:max-w-lg md:rounded-2xl'}`}>
+        className={`bg-card text-card-foreground w-full max-h-[92vh] overflow-y-auto p-4 md:p-5 rounded-t-2xl ${side ? 'md:max-w-md md:max-h-none md:rounded-none md:border-l md:border-border' : `${wide ? 'md:max-w-2xl' : 'md:max-w-lg'} md:rounded-2xl`}`}>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-lg font-semibold">{title}</h2>
           <button type="button" aria-label="Close" onClick={onClose} className="btn px-2 py-1">&times;</button>

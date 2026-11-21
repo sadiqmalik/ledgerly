@@ -10,6 +10,7 @@ import { setTheme } from '../theme';
 import { hasResource, routeResource } from '../auth/resources.mjs';
 import CurrencyLabel from '../components/common/CurrencyLabel';
 import useLoanRegisters from '../components/loans/useLoanRegisters';
+import usePageName, { PATH_KEYS } from '../utils/pageNames';
 
 // a sidebar with grouped navigation and icons, a collapse
 // button on desktop, and a sheet on phones and tablets. Routes are the hash paths App.js uses.
@@ -25,17 +26,16 @@ const NAV_GROUPS = [
   ] },
   { label: 'Files', items: [
     { path: '/documents', label: 'Documents', icon: 'documents' },
-    { path: '/items', label: 'Item tracker', icon: 'items' },
+    { path: '/diary', label: 'Notebook', icon: 'diary' }, // private: needs the Notebook page (super admins, or admins it was switched on for); each sees only their own
+    { path: '/items', label: 'Item Vault', icon: 'items' },
   ] },
-  { label: 'Admin Setup', items: [{ path: '/settings', label: 'Settings', icon: 'settings' }] },
+  { label: 'Administration', items: [{ path: '/settings', label: 'Settings', icon: 'settings' }] },
 ];
 
-// Shown only to super administrators (the admin page checks again). It joins the Admin Setup group.
-const SETUP_LABEL = 'Admin Setup';
-const ADMIN_ITEM = { path: '/admin', label: 'Users & ledgers', icon: 'users' };
-const withAdminItem = groups => (groups.some(g => g.label === SETUP_LABEL)
-  ? groups.map(g => (g.label === SETUP_LABEL ? { ...g, items: [...g.items, ADMIN_ITEM] } : g))
-  : [...groups, { label: SETUP_LABEL, items: [ADMIN_ITEM] }]);
+// One Administration group: Settings (the open ledger) for admins, plus Admins (admins, access codes, all ledgers and
+// currencies) for super administrators only (the admin page checks again).
+const ADMIN_ITEM = { path: '/admin', label: 'Admins', icon: 'users' };
+const withAdminItem = groups => groups.map(g => (g.label === 'Administration' ? { ...g, items: [...g.items, ADMIN_ITEM] } : g));
 
 const ALL_ITEMS = [DASHBOARD_ITEM, ...NAV_GROUPS.flatMap(group => group.items), ADMIN_ITEM];
 
@@ -63,6 +63,13 @@ const ICON_PATHS = {
       <path d="M10 20V4" />
       <path d="M16 20v-7" />
       <path d="M3 20h18" />
+    </>
+  ),
+  diary: (
+    <>
+      <path d="M6 3h11a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6z" />
+      <path d="M6 3v18" />
+      <path d="M10 8h6M10 12h6" />
     </>
   ),
   documents: (
@@ -186,7 +193,7 @@ function LedgerList({ books, book, onSelectBook, collapsed, onAfterSelect, canCr
   return (
     <div role="group" aria-label="Ledgers" className={collapsed ? '' : 'rounded-xl border border-border bg-card p-1'}>
       <ul className="flex flex-col gap-1" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-        {books.map(b => {
+        {books.filter(b => b.active !== false || b.id === book?.id).map(b => {
           const active = book?.id === b.id;
           return (
             <li key={b.id}>
@@ -317,6 +324,8 @@ function NavItem({ item, active, collapsed, onNavigate, renderChildren }) {
 }
 
 function NavLinks({ route, groups, collapsed, label, onNavigate, bookId }) {
+  // A page with its own children in the sidebar (Projects, Loans) is highlighted only on its own list; on a child page the
+  // child is the one highlighted.
   const childrenFor = item => {
     if (item.path === '/projects' && bookId) return () => <ProjectChildren bookId={bookId} route={route} onNavigate={onNavigate} />;
     if (item.path === '/loans') return () => <LoanChildren route={route} onNavigate={onNavigate} />;
@@ -329,7 +338,7 @@ function NavLinks({ route, groups, collapsed, label, onNavigate, bookId }) {
           <ul {...groupListProps(collapsed)}>
             {group.items.map(item => (
               <li key={item.path}>
-                <NavItem item={item} active={isActive(route, item.path)} collapsed={collapsed} onNavigate={onNavigate} renderChildren={childrenFor(item)} />
+                <NavItem item={item} active={isActive(route, item.path) && (!childrenFor(item) || route === item.path)} collapsed={collapsed} onNavigate={onNavigate} renderChildren={childrenFor(item)} />
               </li>
             ))}
           </ul>
@@ -363,6 +372,8 @@ function ThemeToggle() {
 function AppShell({ books, book, onSelectBook, children }) {
   const route = useHashRoute();
   const { account } = useAuth();
+  const names = usePageName(); // aliases set in Settings > Page names
+  const named = item => (PATH_KEYS[item.path] ? { ...item, label: names(PATH_KEYS[item.path]) } : item);
   const isSuper = Boolean(account?.isSuperAdmin);
   const [collapsed, setCollapsed] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -371,11 +382,11 @@ function AppShell({ books, book, onSelectBook, children }) {
   const sheetRef = useRef(null);
 
   const allowedGroups = NAV_GROUPS
-    .map(group => ({ ...group, items: group.items.filter(item => hasResource(account, routeResource(item.path))) }))
+    .map(group => ({ ...group, items: group.items.filter(item => (item.superOnly ? isSuper : hasResource(account, routeResource(item.path)))).map(named) }))
     .filter(group => group.items.length > 0);
   const groups = isSuper ? withAdminItem(allowedGroups) : allowedGroups;
   const topItems = [DASHBOARD_ITEM].filter(item => hasResource(account, routeResource(item.path)));
-  const activeItem = ALL_ITEMS.find(item => isActive(route, item.path));
+  const activeItem = ALL_ITEMS.map(named).find(item => isActive(route, item.path));
   const pageTitle = activeItem ? activeItem.label : 'Ledger';
 
   const closeSheet = () => {

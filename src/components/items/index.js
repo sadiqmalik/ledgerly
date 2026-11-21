@@ -5,12 +5,17 @@ import Modal from '../common/Modal';
 import ConfirmDialog from '../common/ConfirmDialog';
 import { errorMessage } from '../common/format';
 import { inputCls, btnPrimary, btnSecondary, btnDanger, Field } from '../settings/ui';
+import usePageName from '../../utils/pageNames';
+import Select from '../common/Select';
+import Stamp from '../common/Stamp';
 
 const stamp = iso => (iso ? new Date(iso).toLocaleString() : '');
 
-function ItemForm({ bookId, item, locations, onClose, onSaved }) {
+function ItemForm({ bookId, item, copyOf, locations, onClose, onSaved }) {
+  // A duplicate pre-fills every field from copyOf; Save creates a new item.
+  const src = item || copyOf;
   const [f, setF] = useState({
-    name: item?.name || '', comment: item?.comment || '', locationId: item?.locationId || '', owner: item?.owner || ''
+    name: src?.name || '', comment: src?.comment || '', locationId: src?.locationId || '', owner: src?.owner || ''
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -28,15 +33,15 @@ function ItemForm({ bookId, item, locations, onClose, onSaved }) {
   };
 
   return (
-    <Modal title={item ? 'Edit item' : 'Add item'} onClose={onClose}>
+    <Modal title={item ? 'Edit item' : copyOf ? 'Duplicate item' : 'Add item'} onClose={onClose}>
       <form onSubmit={submit} className="space-y-3">
         {error && <p role="alert" className="text-sm text-negative">{error}</p>}
         <Field label="Item"><input className={inputCls} value={f.name} onChange={set('name')} required maxLength={200} /></Field>
         <Field label="Location">
-          <select className={inputCls} value={f.locationId} onChange={set('locationId')}>
+          <Select className={inputCls} value={f.locationId} onChange={set('locationId')}>
             <option value="">(none)</option>
             {locations.map(l => <option key={l.id} value={l.id}>{l.name}{l.place ? ` (${l.place})` : ''}</option>)}
-          </select>
+          </Select>
         </Field>
         <Field label="Owner">
           <input className={inputCls} value={f.owner} onChange={set('owner')} maxLength={200} placeholder="Who it belongs to" />
@@ -125,6 +130,7 @@ function LocationsModal({ bookId, locations, canEdit, onClose, onChanged }) {
 }
 
 export default function ItemTracker() {
+  const pageName = usePageName();
   const { book, canEdit } = useLedger();
   const [items, setItems] = useState(null);
   const [locations, setLocations] = useState([]);
@@ -164,17 +170,11 @@ export default function ItemTracker() {
     try { await itemAPI.deleteItem(id, i.id); if (bookRef.current === id) reload(); } catch (e) { if (bookRef.current === id) setError(errorMessage(e)); }
     setDeleting(false);
   };
-  const actions = i => canEdit && (
-    <div className="flex gap-2">
-      <button type="button" className={`${btnSecondary} !px-2 !py-1`} onClick={() => setEditing(i)}>Edit</button>
-      <button type="button" className={`${btnDanger} !px-2 !py-1`} onClick={() => setPendingItem(i)}>Delete</button>
-    </div>
-  );
 
   return (
     <section className="min-w-0 space-y-4 p-4 sm:p-6">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-xl font-semibold text-foreground">Item tracker</h2>
+        <h2 className="text-xl font-semibold text-foreground">{pageName('items')}</h2>
         <div className="flex gap-2">
           <button type="button" className={btnSecondary} onClick={() => setShowLocations(true)}>Locations</button>
           {canEdit && <button type="button" className={btnPrimary} onClick={() => setEditing({})}>Add item</button>}
@@ -184,44 +184,37 @@ export default function ItemTracker() {
       {error && <p role="alert" className="text-sm text-negative">{error}</p>}
       {items && !shown.length && <p className="text-sm text-muted-foreground">No items.</p>}
 
-      <ul className="grid gap-3 md:hidden" style={{ listStyle: 'none' }}>
-        {shown.map(i => (
-          <li key={i.id} className="min-w-0 space-y-1 rounded-lg border border-border bg-card p-3 text-sm">
-            <div className="font-medium">{i.name}</div>
-            {i.locationName && <div className="text-xs">{i.locationName}{i.place ? ` · ${i.place}` : ''}</div>}
-            {i.owner && <div className="text-xs">Owner: {i.owner}</div>}
-            {i.comment && <div className="text-xs text-muted-foreground">{i.comment}</div>}
-            <div className="text-xs text-muted-foreground">Updated {stamp(i.updatedAt)}</div>
-            {actions(i) && <div className="pt-1">{actions(i)}</div>}
-          </li>
-        ))}
-      </ul>
-
       {shown.length > 0 && (
-        <div className="hidden overflow-x-auto rounded-lg border border-border md:block">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-muted text-xs text-muted-foreground">
-              <tr>{['Item', 'Location', 'Country / place', 'Owner', 'Comment', 'Updated', ''].map(h => <th key={h} className="px-3 py-2 font-medium">{h}</th>)}</tr>
-            </thead>
-            <tbody>
-              {shown.map(i => (
-                <tr key={i.id} className="border-t border-border align-top">
-                  <td className="px-3 py-2 font-medium">{i.name}</td>
-                  <td className="px-3 py-2">{i.locationName}</td>
-                  <td className="px-3 py-2">{i.place}</td>
-                  <td className="px-3 py-2">{i.owner}</td>
-                  <td className="px-3 py-2 text-muted-foreground">{i.comment}</td>
-                  <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">{stamp(i.updatedAt)}</td>
-                  <td className="px-3 py-2">{actions(i)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="grid items-stretch gap-3 grid-cols-[repeat(auto-fill,minmax(min(100%,18rem),1fr))]">
+          {shown.map(i => (
+            <div key={i.id} role={canEdit ? 'button' : undefined} tabIndex={canEdit ? 0 : undefined}
+              onClick={canEdit ? () => setEditing(i) : undefined}
+              onKeyDown={canEdit ? e => { if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) { e.preventDefault(); setEditing(i); } } : undefined}
+              className={`flex h-full min-w-0 flex-col rounded-xl border border-border bg-card p-4 text-sm text-foreground ${canEdit ? 'cursor-pointer hover:bg-muted/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent' : ''}`}>
+              <h2 className="min-w-0 break-words text-lg font-semibold">{i.name}</h2>
+              {(i.locationName || i.owner) && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {i.locationName && <span className="inline-flex max-w-full items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-xs"><span className="text-muted-foreground">Location</span><span className="min-w-0 truncate font-medium text-foreground">{i.locationName}{i.place ? ` \u00B7 ${i.place}` : ''}</span></span>}
+                  {i.owner && <span className="inline-flex max-w-full items-center gap-1 rounded-full bg-accent/10 px-2.5 py-1 text-xs"><span className="text-muted-foreground">Owner</span><span className="min-w-0 truncate font-medium text-foreground">{i.owner}</span></span>}
+                </div>
+              )}
+              {i.comment && <p className="mt-2 whitespace-pre-wrap break-words border-t border-border pt-2 text-sm text-muted-foreground">{i.comment}</p>}
+              <div className="mt-auto flex flex-wrap items-center gap-2 pt-3">
+                <Stamp createdAt={i.createdAt} updatedAt={i.updatedAt} className="text-xs text-muted-foreground" />
+                {canEdit && (
+                  <span className="ml-auto flex items-center gap-2" onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
+                    <button type="button" className={`${btnSecondary} !px-2 !py-1 text-xs`} onClick={() => setEditing({ copy: i })}>Duplicate</button>
+                    <button type="button" className={`${btnDanger} !px-2 !py-1 text-xs`} onClick={() => setPendingItem(i)}>Delete</button>
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
       {editing && (
-        <ItemForm bookId={book.id} item={editing.id ? editing : null} locations={locations}
+        <ItemForm bookId={book.id} item={editing.id ? editing : null} copyOf={editing.copy} locations={locations}
           onClose={() => setEditing(null)} onSaved={() => { reload(); setEditing(null); }} />
       )}
       {showLocations && (

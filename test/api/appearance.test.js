@@ -18,12 +18,25 @@ describe('appearance API', () => {
   });
   afterEach(async () => { await ctx.close(); });
 
+  it('page names: an admin sets aliases, blanks and unknown pages are dropped, empty resets to defaults', async () => {
+    assert.deepEqual((await ctx.api.get(U)).body.pageNames, {});
+    const set = await ctx.api.put(U).send({ pageNames: { items: ' Item Vault ', diary: 'Notes', loans: '   ' } });
+    assert.equal(set.status, 200);
+    assert.deepEqual(set.body.pageNames, { items: 'Item Vault', diary: 'Notes' });
+    assert.deepEqual((await viewer.get(U)).body.pageNames, { items: 'Item Vault', diary: 'Notes' });
+    assert.equal((await ctx.api.put(U).send({ pageNames: { settings: 'X' } })).status, 400);
+    assert.equal((await ctx.api.put(U).send({ pageNames: { items: 'x'.repeat(31) } })).status, 400);
+    assert.equal((await editor.put(U).send({ pageNames: { items: 'Mine' } })).status, 403);
+    assert.deepEqual((await ctx.api.put(U).send({ pageNames: {} })).body.pageNames, {});
+    assert.equal((await ctx.api.put(U).send({ palette: 'ocean' })).body.palette, 'ocean');
+  });
+
   it('defaults, admin sets either key or both, values persist', async () => {
-    assert.deepEqual((await ctx.api.get(U)).body, { palette: 'forest', listView: 'cards' });
-    assert.deepEqual((await ctx.api.put(U).send({ palette: 'ocean' })).body, { palette: 'ocean', listView: 'cards' });
-    assert.deepEqual((await ctx.api.put(U).send({ listView: 'table' })).body, { palette: 'ocean', listView: 'table' });
-    assert.deepEqual((await ctx.api.put(U).send({ palette: 'blush', listView: 'cards' })).body, { palette: 'blush', listView: 'cards' });
-    assert.deepEqual((await viewer.get(U)).body, { palette: 'blush', listView: 'cards' });
+    assert.deepEqual((await ctx.api.get(U)).body, { palette: 'forest', listView: 'cards', pageNames: {} });
+    assert.deepEqual((await ctx.api.put(U).send({ palette: 'ocean' })).body, { palette: 'ocean', listView: 'cards', pageNames: {} });
+    assert.deepEqual((await ctx.api.put(U).send({ listView: 'table' })).body, { palette: 'ocean', listView: 'table', pageNames: {} });
+    assert.deepEqual((await ctx.api.put(U).send({ palette: 'blush', listView: 'cards' })).body, { palette: 'blush', listView: 'cards', pageNames: {} });
+    assert.deepEqual((await viewer.get(U)).body, { palette: 'blush', listView: 'cards', pageNames: {} });
   });
 
   it('editor and viewer cannot change it', async () => {
@@ -41,6 +54,6 @@ describe('appearance API', () => {
   it('any member reads it without page resources', async () => {
     const res = await bare.get(U);
     assert.equal(res.status, 200);
-    assert.deepEqual(res.body, { palette: 'forest', listView: 'cards' });
+    assert.deepEqual(res.body, { palette: 'forest', listView: 'cards', pageNames: {} });
   });
 });

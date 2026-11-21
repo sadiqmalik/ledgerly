@@ -33,7 +33,7 @@ This starts Vite on `http://localhost:3100` and the Worker on port 8788. The Wor
 
 A new install has **no sample data** and no accounts.
 
-1. Create the first super administrator. The password is typed hidden at the prompt (at least 12 characters) and is never a command argument.
+1. Create the first super administrator. The password is typed hidden at the prompt (at least 6 characters) and is never a command argument.
    - Warden: `warden account-create --email you@example.com --name "Your Name"`
    - Without Warden: `npm run account:create -- --email you@example.com --name "Your Name"`
 2. Open the app and sign in with that email and password.
@@ -69,7 +69,7 @@ Run these from the repository folder. Warden 0.16 rejects a bare `--remote`, so 
 
 | Command | What it does | Use it when |
 | --- | --- | --- |
-| `warden account-create --email <email> --name "<name>"` | Creates a super administrator in the local D1. `-- --remote` creates it in the live D1 (needs the Cloudflare keys and asks for `live`). Password typed hidden, at least 12 characters. | First run, or adding another super administrator. |
+| `warden account-create --email <email> --name "<name>"` | Creates a super administrator in the local D1. `-- --remote` creates it in the live D1 (needs the Cloudflare keys and asks for `live`). Password typed hidden, at least 6 characters. | First run, or adding another super administrator. |
 | `warden account-reset-password --email <email>` | Sets a new password in the local D1 (`-- --remote` for live). Clears the lockout and signs the account out everywhere. | Someone forgot their password or is locked out. |
 | `warden app [COMMAND]` | Opens a bash shell in the app container, or runs a command there, for example `warden app npm ci`. | You want npm or wrangler inside the container. |
 | `warden d1 [sql]` | Runs SQL on the local D1. With no SQL it lists the tables. `-- --remote` targets live; anything other than SELECT, PRAGMA, EXPLAIN or WITH asks for `live`. | Looking at or fixing data. |

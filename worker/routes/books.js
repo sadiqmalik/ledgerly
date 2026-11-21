@@ -16,7 +16,7 @@ const slugify = text => text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/
 
 const registerBookRoutes = (app, { repo, accountAdmin }) => {
   const view = (b, account) => ({
-    id: b.id, name: b.name, baseCurrency: b.base_currency, createdAt: b.created_at, active: b.active !== 0, role: roleFor(account, b.id)
+    id: b.id, name: b.name, baseCurrency: b.base_currency, createdAt: b.created_at, updatedAt: b.updated_at ?? null, active: b.active !== 0, role: roleFor(account, b.id)
   });
 
   const requireSuperAdmin = c => { if (!c.get('account').isSuperAdmin) throw new ForbiddenError('Only a super administrator can do this'); };
@@ -71,13 +71,21 @@ const registerBookRoutes = (app, { repo, accountAdmin }) => {
     return c.json(view(await repo.books.get(book.id), c.get('account')));
   });
 
+  // Super admin only. Deletes the ledger with everything in it (entries, documents and their files, projects, funds...).
+  // The caller must repeat the ledger name in ?confirm= so a stray request cannot wipe a ledger.
   app.delete('/api/books/:b', async c => {
     requireSuperAdmin(c);
     const book = await loadBook(c);
-    if (book.active !== 0) throw new AppError('Deactivate the ledger first, then delete it permanently.', 409);
-    const counts = await repo.books.counts(book.id);
-    if (counts.entries > 0 || counts.documents > 0) {
-      throw new AppError('Cannot delete a book that has entries or documents', 409, counts);
+    if ((c.req.query('confirm') || '') !== book.name) throw new AppError('Type the ledger name to confirm the delete.', 400);
+    const bucket = (c.env && c.env.DOCS) || null;
+    if (bucket) {
+      const prefix = `docs/${book.id}/`;
+      let cursor;
+      do {
+        const page = await bucket.list({ prefix, cursor });
+        if (page.objects.length) await bucket.delete(page.objects.map(o => o.key));
+        cursor = page.truncated ? page.cursor : undefined;
+      } while (cursor);
     }
     await repo.books.remove(book.id);
     return c.json({ success: true });

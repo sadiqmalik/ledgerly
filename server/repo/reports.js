@@ -6,7 +6,8 @@ const notSkipped = alias => `(${alias}.category_id IS NULL OR ${alias}.category_
 const mapProject = r => ({
   id: r.id, name: r.name, kind: r.kind, fundId: r.fund_id, fundName: r.fund_name ?? null,
   startsOn: r.starts_on, endsOn: r.ends_on, budget: r.budget,
-  status: r.status, metaSchema: r.meta_schema ? JSON.parse(r.meta_schema) : null
+  status: r.status, metaSchema: r.meta_schema ? JSON.parse(r.meta_schema) : null,
+  createdAt: r.created_at ?? null, updatedAt: r.updated_at ?? null
 });
 
 const PROJECT_SELECT = 'SELECT p.*, f.name AS fund_name FROM projects p LEFT JOIN funds f ON f.id = p.fund_id';

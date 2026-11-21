@@ -332,11 +332,23 @@ If you kept your money in a spreadsheet, start by creating the funds and categor
 | See profit by month | Reports | **Profit** tab |
 | Download my data | Settings > Data | CSV, Excel or Backup |
 | Lock a finished year | Settings > Years | **Close** |
-| Add a team member | Settings > Ledger | **Members**, email, role, **Add** |
+| Add a team member | Settings > Members | **Members**, email, role, **Add** |
 | Start a new ledger | Sidebar or account menu | **New ledger** |
-| Hide a ledger for a while | Settings > Ledger | **Deactivate ledger**, type the name |
-| Bring back a hidden ledger | Settings > Ledger, or Users & ledgers > Ledgers (super admin) | **Reactivate**, type the name |
-| Delete a hidden ledger for good | Users & ledgers > Ledgers (super admin) | **Delete permanently**, only when it has no entries or documents |
+| Hide a ledger for a while | Settings > Details | **Deactivate ledger**, type the name |
+| Bring back a hidden ledger | Settings > Details, or Administration > All ledgers (super admin) | **Enable** (Administration) or **Reactivate** (Settings), type the name |
+| Hide a ledger from the side panel | Administration > All ledgers (super admin) or Settings > Details | **Disable** |
+| Delete a ledger and all its data | Administration > All ledgers (super admin) | **Delete**, type the name |
+| Add an admin who manages only one ledger or loan | Admins (super admin) | **Add admin**, Super admin off, pick ledgers, loans and pages |
+| Make someone a super admin (or back) | Admins > the admin's card | **Make super admin** / **Make normal admin** |
+| Make a read-only login for someone | Administration > Access codes | **New access code**: view only, never Settings or any editing |
+| Rename a page (for example Item Vault) or go back to defaults | Settings > Page names (ledger admin) | Type a name, **Save names**, or **Use default** / **Reset all to defaults** |
+| Copy an entry, document, note, item, loan or project | The record's row, card or edit form | **Duplicate**, adjust, **Save** |
+| Create a notebook, linked to a ledger or private | Notebook | **New notebook**, choose the linked ledger (or none, super admin only) |
+| Write down a note or thought | Notebook > a notebook | **New entry** |
+| Remember an important date (anniversary, first service) | Notebook | **New entry**, switch on **Important date**, then **Repeats every year** |
+| Group dates and notes under a person or topic | Notebook | **New category**, or type a category in the entry |
+| See what is coming up | Notebook > Upcoming | the strip at the top |
+| Hide or bring back an entry | Notebook | **Disable** or **Enable** |
 | Rearrange the Dashboard | Dashboard | **Customize** |
 | Create a loan | Loans | **New loan** |
 | Add a loan taken | Loans > the loan | **Add entry**, then **Loan taken** |
@@ -344,4 +356,4 @@ If you kept your money in a spreadsheet, start by creating the funds and categor
 | See what is still owed | Loans | **Remaining** on each card, or **Remaining balance** at the top of a loan |
 | Close a loan that is fully paid back | Loans > the loan (loan admin) | **Mark as settled** (needs zero remaining); **Reopen loan** to undo |
 | See settled loans | Loans | **Show settled loans** switch |
-| Give someone access to one loan | Users & ledgers (super admin) | **Edit loan access**, set the role for that loan |
+| Give someone access to one loan | Administration (super admin) | **Edit loan access**, set the role for that loan |

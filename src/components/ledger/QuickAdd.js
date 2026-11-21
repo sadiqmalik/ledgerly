@@ -10,6 +10,7 @@ import { amountMinorFromQuantityAndUnitPrice, parseQuantityInput, parseUnitPrice
 import { useCurrencies } from '../../hooks/CurrencyContext';
 import { SideSwitch, dirProps } from '../settings/ui';
 import MoneyInput from '../common/MoneyInput';
+import Select from '../common/Select';
 
 // direction: fixed 'cr'/'dr', or null when the user picks. category: preset category name.
 const PRESETS = {
@@ -184,12 +185,12 @@ export default function QuickAdd({ preset: initialPreset, onClose }) {
           <input id="qa-date" type="date" min="1900-01-01" max="9999-12-31" value={date} onChange={e => setDate(e.target.value)} required aria-describedby={dateClosed ? 'qa-closed' : undefined} />
           {dateClosed && <p id="qa-closed" role="alert" className="text-sm text-negative mt-1">{date.slice(0, 4)} is closed. Pick a date in an open year, or reopen it in Settings &rsaquo; Years.</p>}</div>
         <div className="form-group"><label htmlFor="qa-fund">{isTransfer ? 'From fund' : 'Fund'}</label>
-          <select id="qa-fund" value={fundId} onChange={e => setFundId(e.target.value)}>{fundOptions(isConvert ? funds.filter(f => funds.some(g => g.currency !== f.currency)) : funds)}</select></div>
+          <Select id="qa-fund" value={fundId} onChange={e => setFundId(e.target.value)}>{fundOptions(isConvert ? funds.filter(f => funds.some(g => g.currency !== f.currency)) : funds)}</Select></div>
         {isTransfer && (
           <div className="form-group"><label htmlFor="qa-tofund">To fund</label>
-            <select id="qa-tofund" value={toFundId} onChange={e => setToFundId(e.target.value)}>
+            <Select id="qa-tofund" value={toFundId} onChange={e => setToFundId(e.target.value)}>
               {fundOptions(funds.filter(f => f.id !== fundId && (!isConvert || !fund || f.currency !== fund.currency)))}
-            </select></div>
+            </Select></div>
         )}
         {showDirection && (
           <div className="form-group"><SideSwitch {...dirProps} value={direction} onChange={setDirection} /></div>
@@ -199,10 +200,10 @@ export default function QuickAdd({ preset: initialPreset, onClose }) {
             <div className="form-group"><label htmlFor="qa-party">Party</label>
               <PartyInput id="qa-party" value={party} onChange={setParty} parties={parties} /></div>
             <div className="form-group"><label htmlFor="qa-cat">Category</label>
-              <select id="qa-cat" value={categoryId} onChange={e => setCategoryId(e.target.value)}>
+              <Select id="qa-cat" value={categoryId} onChange={e => setCategoryId(e.target.value)}>
                 <option value="">(none)</option>
                 {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select></div>
+              </Select></div>
           </>
         )}
         {isTransfer ? (

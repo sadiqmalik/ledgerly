@@ -7,6 +7,7 @@ import Settings from './components/settings';
 import Projects from './components/projects';
 import Reports from './components/reports';
 import Documents from './components/documents';
+import Diary from './components/diary';
 import ItemTracker from './components/items';
 import AdminScreen from './components/admin/AdminScreen';
 import Loans from './components/loans';
@@ -46,6 +47,7 @@ function Screens() {
         : route.startsWith('/projects') ? <Projects />
         : route === '/reports' ? <Reports />
         : route === '/documents' ? <Documents />
+        : route.startsWith('/diary') ? <Diary key={book?.id} />
         : route === '/items' ? <ItemTracker />
         : route === '/settings' ? <Settings book={book} role={role} />
         : route === '/admin' ? (account?.isSuperAdmin ? <AdminScreen /> : <Dashboard />)
@@ -82,7 +84,7 @@ function App() {
       setError('');
       setBookId(current => {
         const want = selectId || current;
-        return list.some(b => b.id === want) ? want : list[0]?.id ?? null;
+        return list.some(b => b.id === want) ? want : (list.find(b => b.active !== false) || list[0])?.id ?? null;
       });
     } catch {
       setError('Could not load your books.');

@@ -7,6 +7,7 @@ import ConfirmDialog from '../common/ConfirmDialog';
 import { errorMessage } from '../common/format';
 import { useResource, Field, inputCls, btnPrimary, btnDanger, btnSecondary } from './ui';
 import CurrencyLabel from '../common/CurrencyLabel';
+import Select from '../common/Select';
 
 // Compact danger button for the small cards in the Members grid.
 const btnSmDanger = 'rounded-md border border-negative px-2 py-1 text-xs font-medium text-negative hover:bg-muted disabled:opacity-50';
@@ -97,10 +98,10 @@ function Members({ bookId, selfId }) {
                 </dl>
               </div>
               <div className="mt-auto flex flex-wrap items-center justify-between gap-2">
-                <select aria-label={`Role of ${m.email}`} className="rounded-md border border-border bg-background px-1.5 py-1 text-xs" value={m.role} disabled={self}
+                <Select aria-label={`Role of ${m.email}`} className="rounded-md border border-border bg-background px-1.5 py-1 text-xs" value={m.role} disabled={self}
                   title={self ? 'You cannot change your own role' : undefined} onChange={e => setRoleOf(m.accountId, e.target.value)}>
                   <option value="viewer">viewer</option><option value="editor">editor</option><option value="admin">admin</option>
-                </select>
+                </Select>
                 <button type="button" className={btnSmDanger} disabled={self} onClick={() => remove(m)}>Remove</button>
               </div>
             </li>
@@ -113,9 +114,9 @@ function Members({ bookId, selfId }) {
             <input type="email" className={inputCls} value={email} onChange={e => setEmail(e.target.value)} required placeholder="name@example.com" />
           </Field>
         </div>
-        <select aria-label="Role" className="rounded-md border border-border bg-background px-2 py-2 text-sm" value={role} onChange={e => setRole(e.target.value)}>
+        <Select aria-label="Role" className="rounded-md border border-border bg-background px-2 py-2 text-sm" value={role} onChange={e => setRole(e.target.value)}>
           <option value="viewer">viewer</option><option value="editor">editor</option><option value="admin">admin</option>
-        </select>
+        </Select>
         <button type="submit" className={btnSecondary} disabled={!email.trim()}>Add</button>
       </form>
       {pendingRemove && (
@@ -196,17 +197,24 @@ function ReadOnlyDetails({ book }) {
   );
 }
 
-export default function LedgerTab({ bookId, canEdit }) {
-  const { account } = useAuth();
+// Settings > Details: this ledger's name, base currency and the deactivate switch.
+export function DetailsTab({ bookId, canEdit }) {
   const { books, reloadBooks } = useBooks();
   const book = books.find(b => b.id === bookId);
   if (!book) return null;
   if (!canEdit) return <div className="max-w-xl"><ReadOnlyDetails book={book} /></div>;
   return (
-    <div className="grid w-full grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,28rem)_minmax(0,1fr)] xl:grid-cols-[minmax(0,26rem)_minmax(0,1fr)_minmax(0,22rem)]">
+    <div className="grid w-full grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,28rem)_minmax(0,28rem)]">
       <Details key={`${book.id}:${book.name}:${book.baseCurrency}`} book={book} reloadBooks={reloadBooks} />
-      <Members bookId={bookId} selfId={account?.id} />
       <DeactivateLedger key={book.id} book={book} books={books} reloadBooks={reloadBooks} />
     </div>
   );
 }
+
+// Settings > Members: who can use this ledger and with which role (ledger admins only).
+export function MembersTab({ bookId }) {
+  const { account } = useAuth();
+  return <div className="w-full max-w-3xl"><Members bookId={bookId} selfId={account?.id} /></div>;
+}
+
+export default DetailsTab;

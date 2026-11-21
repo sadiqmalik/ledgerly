@@ -9,28 +9,31 @@ import ConfirmDialog from '../common/ConfirmDialog';
 import QuantityPriceFields from '../common/QuantityPriceFields';
 import { Field, Check, Toggle, SideSwitch, inputCls, btnPrimary, btnSecondary, btnDanger } from '../settings/ui';
 import { amountMinorFromQuantityAndUnitPrice, parseQuantityInput, parseUnitPriceInput, quantityPriceFromEntry, validateQuantityPriceInputs } from '../../utils/entryQuantityPrice.mjs';
+import Select from '../common/Select';
 
 // Add (entry == null) or edit/delete one project entry. Errors (423 year closed, ...) show inline.
-export default function EntryForm({ bookId, project, metaKeys, labelOf, categories, entry, canEdit, onClose, onSaved }) {
+export default function EntryForm({ bookId, project, metaKeys, labelOf, categories, entry, copyOf, canEdit, onClose, onSaved, onDuplicate }) {
   const editing = !!entry;
+  // A duplicate (copyOf) pre-fills everything from another entry, dated today; Save creates a new entry.
+  const src = entry || copyOf;
   const { isClosedDate, funds, book, parties } = useLedger();
   const cur = funds.find(x => x.id === project.fundId)?.currency || book.baseCurrency;
   const entryClosed = editing && isClosedDate(entry.date);
-  const entryQP = quantityPriceFromEntry(entry || {});
+  const entryQP = quantityPriceFromEntry(src || {});
 
   const [f, setF] = useState(() => ({
     date: entry?.date || todayISO(),
-    categoryId: entry?.categoryId || '',
-    comment: entry?.comment || '',
+    categoryId: src?.categoryId || '',
+    comment: src?.comment || '',
     quantity: entryQP.quantityText,
     unitPrice: entryQP.unitPriceText,
-    direction: entry?.direction || 'dr',
-    meta: { ...(entry?.meta || {}) },
-    status: entry?.status || 'pending',
+    direction: src?.direction || 'dr',
+    meta: { ...(src?.meta || {}) },
+    status: src?.status || 'pending',
     paidDate: entry?.paidDate || '',
-    exclude: !!entry?.exclude,
+    exclude: !!src?.exclude,
   }));
-  const [party, setParty] = useState(entry?.partyName || '');
+  const [party, setParty] = useState(src?.partyName || '');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   const [refunding, setRefunding] = useState(false);
@@ -100,16 +103,16 @@ export default function EntryForm({ bookId, project, metaKeys, labelOf, categori
 
   return (
     <>
-    <Modal title={editing ? (ro ? 'Entry' : 'Edit entry') : 'Add entry'} onClose={onClose}>
+    <Modal title={editing ? (ro ? 'Entry' : 'Edit entry') : copyOf ? 'Duplicate entry' : 'Add entry'} onClose={onClose}>
       <form onSubmit={submit} className="space-y-5">
         <fieldset disabled={ro || busy} className="m-0 min-w-0 space-y-4 border-0 p-0">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Date"><input type="date" min="1900-01-01" max="9999-12-31" className={inputCls} value={f.date} onChange={e => set('date', e.target.value)} /></Field>
             <Field label="Category">
-              <select className={inputCls} value={f.categoryId} onChange={e => set('categoryId', e.target.value)}>
+              <Select className={inputCls} value={f.categoryId} onChange={e => set('categoryId', e.target.value)}>
                 <option value="">(none)</option>
                 {categories.filter(c => !c.archived).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
+              </Select>
             </Field>
           </div>
           <QuantityPriceFields
@@ -135,10 +138,10 @@ export default function EntryForm({ bookId, project, metaKeys, labelOf, categori
           ))}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Status">
-              <select className={inputCls} value={f.status} onChange={e => set('status', e.target.value)}>
+              <Select className={inputCls} value={f.status} onChange={e => set('status', e.target.value)}>
                 <option value="pending">pending</option>
                 <option value="paid">paid</option>
-              </select>
+              </Select>
             </Field>
             {f.status === 'paid' && (
               <Field label="Paid date"><input type="date" min="1900-01-01" max="9999-12-31" className={inputCls} value={f.paidDate} onChange={e => set('paidDate', e.target.value)} /></Field>
@@ -147,7 +150,10 @@ export default function EntryForm({ bookId, project, metaKeys, labelOf, categori
           <Toggle label="Count in ledger totals" hint="Off keeps the entry as a record, dimmed, but leaves it out of the fund balance and all totals." checked={!f.exclude} onChange={v => set('exclude', !v)} />
         </fieldset>
         {editing && !ro && !entry.linkId && (
-          <div><button type="button" className={btnSecondary} disabled={busy} onClick={() => setRefunding(true)}>Refund / Balance</button></div>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className={btnSecondary} disabled={busy} onClick={() => setRefunding(true)}>Refund / Balance</button>
+            {onDuplicate && <button type="button" className={btnSecondary} disabled={busy} onClick={() => onDuplicate(entry)}>Duplicate</button>}
+          </div>
         )}
         {(dateClosed || entryClosed) && <p role="alert" className="text-sm text-negative">{(entryClosed ? entry.date : f.date).slice(0, 4)} is closed. {entryClosed ? 'Reopen it in Settings \u203a Years to make changes.' : 'Pick a date in an open year, or reopen it in Settings \u203a Years.'}</p>}
         {err && <p role="alert" className="text-sm text-negative">{err}</p>}

@@ -24,6 +24,29 @@ describe('account administration', () => {
 
   const events = async () => ctx.repo.authStore.log.list();
 
+  it('admin types: a super admin is created without specific access, and the type can be changed', async () => {
+    const made = await ctx.api.post('/api/admin/accounts').send({
+      email: 'boss@example.com', name: 'Boss', password: NEW_PASSWORD, isSuperAdmin: true,
+      memberships: [{ bookId: BOOK, role: 'viewer' }], resources: ['items']
+    });
+    assert.equal(made.status, 201);
+    assert.equal(made.body.account.isSuperAdmin, true);
+    assert.deepEqual(made.body.account.memberships, []); // super admins get no specific access
+    assert.equal(made.body.account.resourcesSet, false);
+    const bossId = made.body.account.id;
+    // A normal admin cannot change types; a super admin cannot change their own.
+    assert.equal((await editor.put(`/api/admin/accounts/${bossId}/type`).send({ isSuperAdmin: false })).status, 403);
+    const me = (await ctx.api.get('/api/auth/me')).body.account.id;
+    assert.equal((await ctx.api.put(`/api/admin/accounts/${me}/type`).send({ isSuperAdmin: false })).status, 409);
+    // Demote the new one (another super admin remains), then promote the editor.
+    const demoted = await ctx.api.put(`/api/admin/accounts/${bossId}/type`).send({ isSuperAdmin: false });
+    assert.equal(demoted.status, 200);
+    assert.equal(demoted.body.account.isSuperAdmin, false);
+    const promoted = await ctx.api.put(`/api/admin/accounts/${editorId}/type`).send({ isSuperAdmin: true });
+    assert.equal(promoted.body.account.isSuperAdmin, true);
+    assert.equal((await ctx.api.put(`/api/admin/accounts/${editorId}/type`).send({ isSuperAdmin: 'yes' })).status, 400);
+  });
+
   it('only super administrators can manage accounts', async () => {
     assert.equal((await editor.get('/api/admin/accounts')).status, 403);
     assert.equal((await editor.post('/api/admin/accounts').send({ email: 'x@example.com', name: 'X', password: NEW_PASSWORD })).status, 403);

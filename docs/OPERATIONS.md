@@ -15,7 +15,7 @@ For the person who runs the Ledger: starts it on the Mac, backs it up, tests it 
 | R2 `DOCS` (bucket `ledger-docs`) | Document files |
 | Cron trigger | Nightly backup and session cleanup at 02:00 UTC |
 
-Migrations in `migrations/` run in order: `0001` auth, `0002` ledger schema, `0003` seed (the book, holders, funds, categories), `0004` memo funds, `0005` document files, `0006` access codes, `0007` item tracker, `0008` page permissions, `0009` entry quantity, `0010` project kinds, `0011` profit settings, `0012` ledger active flag (`books.active`), `0013` loan registers, `0014` currencies, `0015` entry-document links, `0016` settled loans, `0017` loan entry lender, `0018` loans shared with access codes.
+Migrations in `migrations/` run in order: `0001` auth, `0002` ledger schema, `0003` seed (the book, holders, funds, categories), `0004` memo funds, `0005` document files, `0006` access codes, `0007` item tracker, `0008` page permissions, `0009` entry quantity, `0010` project kinds, `0011` profit settings, `0012` ledger active flag (`books.active`), `0013` loan registers, `0014` currencies, `0015` entry-document links, `0016` settled loans, `0017` loan entry lender, `0018` loans shared with access codes, `0019` diary notes, `0020` diary categories and important dates, `0021` diary privacy (an owner on categories).
 
 ---
 
@@ -72,7 +72,7 @@ Settings in `wrangler.toml` `[vars]`: `ALLOWED_ORIGIN`, `APP_TIMEZONE`, `BACKUP_
 
 ## 4. Administrators and passwords
 
-The first account is a super administrator. The password is typed at a hidden prompt, twice, at least 12 characters. It is never a command argument.
+The first account is a super administrator. The password is typed at a hidden prompt, twice, at least 6 characters. It is never a command argument.
 
 ```bash
 npm run account:create -- --email you@example.com --name "Your Name"    # without Warden

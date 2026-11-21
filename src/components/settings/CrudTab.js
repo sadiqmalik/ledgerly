@@ -6,6 +6,7 @@ import { useAuth } from '../../auth/AuthContext';
 import { hasResource } from '../../auth/resources.mjs';
 import { useResource, useEntryCounts, EntryCount, errorText, btnPrimary, btnSecondary, btnDanger, Toggle, Badge } from './ui';
 import { useListView } from '../../hooks/useListView';
+import Stamp from '../common/Stamp';
 
 // One generic list-and-edit screen. Each settings tab supplies its columns, form fields and payload mapping.
 //   removal: 'archive' (DELETE archives, can be restored with restoreBody) or 'delete' (hard delete).
@@ -219,6 +220,7 @@ export default function CrudTab({
                     </div>
                   );
                 })}
+                <Stamp createdAt={row.createdAt} updatedAt={row.updatedAt} className="mt-1 border-t border-border pt-1 text-xs text-muted-foreground" />
               </div>
             );
           })}

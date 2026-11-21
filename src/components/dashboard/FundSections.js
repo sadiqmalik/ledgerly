@@ -10,6 +10,7 @@ import { useLedger } from '../../hooks/LedgerContext';
 import Amount from '../common/Amount';
 import { Card, Skeleton, Empty, Badge, pct, tint } from './ui';
 import Chart from './Chart';
+import Select from '../common/Select';
 
 const bal = n => `tabular-nums font-medium ${n < 0 ? 'text-negative' : ''}`;
 
@@ -138,10 +139,10 @@ function AddWalletModal({ base, holders, onClose, onDone }) {
           <span className="text-xs text-muted-foreground">Must differ from the base currency ({base}).</span>
         </label>
         <label className="flex flex-col gap-1 text-sm">Account (optional)
-          <select value={holderId} onChange={e => setHolderId(e.target.value)}>
+          <Select value={holderId} onChange={e => setHolderId(e.target.value)}>
             <option value="">None</option>
             {Object.entries(holders || {}).map(([id, n]) => <option key={id} value={id}>{n}</option>)}
-          </select>
+          </Select>
         </label>
         {error && <div className="alert alert-error" role="alert">{error}</div>}
         <div className="flex gap-2 justify-end">

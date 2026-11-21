@@ -3,6 +3,7 @@ import { api } from '../../services/dataAPI';
 import { useAuth } from '../../auth/AuthContext';
 import { applyEffectivePalette, storeDefaultPalette } from '../../theme';
 import { applyEffectiveListView, storeDefaultListView } from '../../hooks/useListView';
+import { setPageAliases } from '../../utils/pageNames';
 
 // Fetches the ledger default palette and list layout (set by an administrator), caches it, then applies the effective look:
 // the user's personal choice if they made one, otherwise the ledger default. Renders nothing.
@@ -23,6 +24,7 @@ export default function AppearanceSync({ bookId }) {
         if (cancelled || !data) return;
         if (data.palette) storeDefaultPalette(data.palette);
         if (data.listView) storeDefaultListView(data.listView);
+        setPageAliases(data.pageNames);
         applyEffectivePalette(accountId);
         applyEffectiveListView(accountId);
       } catch {

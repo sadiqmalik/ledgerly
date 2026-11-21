@@ -37,7 +37,7 @@ const mapDoc = r => ({
   id: r.id, date: r.date, receivedOn: r.received_on, doctor: r.doctor, hospital: r.hospital, type: r.type,
   title: r.title, comment: r.comment, projectId: r.project_id, projectName: r.project_name,
   partyId: r.party_id, partyName: r.party_name, hasFile: Boolean(r.r2_key),
-  fileName: r.file_name, fileType: r.file_type, fileSize: r.file_size, createdAt: r.created_at
+  fileName: r.file_name, fileType: r.file_type, fileSize: r.file_size, createdAt: r.created_at, updatedAt: r.updated_at ?? null
 });
 
 const mapLinkedDoc = r => ({ id: r.id, title: r.title, date: r.date, type: r.type, hasFile: Boolean(r.r2_key), fileName: r.file_name, fileType: r.file_type });

@@ -21,7 +21,7 @@ const main = async () => {
   const found = runSql(`SELECT id FROM accounts WHERE email = ${sqlString(email)}`, { remote, json: true });
   if (found.length === 0) throw new Error('No account with that email. Nothing was changed.');
 
-  const password = await readSecret('New password (min 12 characters, hidden): ');
+  const password = await readSecret('New password (min 6 characters, hidden): ');
   if (password.length < MIN_PASSWORD_LENGTH) {
     throw new Error(`The password has ${password.length} characters; at least ${MIN_PASSWORD_LENGTH} are needed. Nothing was changed.`);
   }

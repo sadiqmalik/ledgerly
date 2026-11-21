@@ -233,6 +233,11 @@ const createD1AuthStore = db => {
         ]);
       },
 
+      // Brings a revoked code back (its secret is unchanged). Loans shared with it before the revoke stay unshared.
+      async restore(id) {
+        await prep('UPDATE access_codes SET revoked_at = NULL WHERE id = ?', String(id)).run();
+      },
+
       // Loan registers shared with a code (view-only), and the codes a register is shared with.
       async loanIds(codeId) {
         return (await rows('SELECT register_id FROM access_code_loans WHERE code_id = ? ORDER BY register_id', String(codeId))).map(r => r.register_id);
@@ -311,7 +316,7 @@ const createD1AuthStore = db => {
 
     books: {
       async list() {
-        return rows('SELECT id, name, base_currency, created_at, active FROM books ORDER BY name');
+        return rows('SELECT id, name, base_currency, created_at, updated_at, active FROM books ORDER BY name');
       },
 
       async existingIds(ids) {

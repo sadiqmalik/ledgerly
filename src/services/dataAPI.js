@@ -38,6 +38,7 @@ const dataAPI = {
     (await api.put(`/admin/access-codes/${encodeURIComponent(id)}/resources`, { resources })).data.accessCode,
   resetAccessCode: async (id, code = '') =>
     (await api.post(`/admin/access-codes/${encodeURIComponent(id)}/reset`, { code })).data.accessCode,
+  restoreAccessCode: async id => (await api.post(`/admin/access-codes/${encodeURIComponent(id)}/restore`, {})).data.accessCode,
   revokeAccessCode: async id => (await api.post(`/admin/access-codes/${encodeURIComponent(id)}/revoke`, {})).data.accessCode,
   deleteAccessCode: async id => (await api.delete(`/admin/access-codes/${encodeURIComponent(id)}`)).data.deleted,
 

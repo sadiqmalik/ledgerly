@@ -3,6 +3,7 @@ import { useLedger } from '../../hooks/LedgerContext';
 import Amount from '../common/Amount';
 import ColumnChart from './charts/ColumnChart';
 import { useGet, Status, Card, TableWrap, Field, ctl, th, td, tdL, thL } from './shared';
+import Select from '../common/Select';
 
 export default function Profit() {
   const { book, funds } = useLedger();
@@ -18,9 +19,9 @@ export default function Profit() {
     <div className="space-y-5">
       <div className="rounded-xl border border-border bg-card p-3">
         <Field label="Fund">
-          <select style={ctl} value={fund} onChange={e => setFund(e.target.value)}>
+          <Select style={ctl} value={fund} onChange={e => setFund(e.target.value)}>
             {funds.map(f => <option key={f.id} value={f.id}>{f.name} ({f.currency})</option>)}
-          </select>
+          </Select>
         </Field>
       </div>
       {!fund ? <div className="p-4 text-sm text-muted-foreground">Loading…</div> : (

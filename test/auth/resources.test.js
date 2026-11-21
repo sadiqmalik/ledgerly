@@ -21,7 +21,7 @@ const MATRIX = [
   ['get', '/parties', [...LOOKUP, 'documents']],
   ['post', '/funds', ['settings']],
   ['post', '/parties', ['settings']],
-  ['get', '/project-names', ['dashboard', 'ledger', 'reports', 'projects', 'documents']],
+  ['get', '/project-names', ['dashboard', 'ledger', 'reports', 'projects', 'documents', 'diary']],
   ['get', '/projects', ['projects']],
   ['post', '/projects', ['projects']],
   ['get', '/years', ['ledger', 'projects', 'settings']],
@@ -95,10 +95,22 @@ describe('page resources', () => {
   });
 
   it('every single-resource access code is limited to it, and codes stay viewers', async () => {
-    for (const key of R.RESOURCES) {
+    for (const key of R.CODE_RESOURCES) {
       const { api } = await codeWith([key]);
       await assertMatrix(api, [key]);
     }
+  });
+
+  it('an access code never gets the Settings page, even when asked for every page', async () => {
+    assert.equal(R.CODE_RESOURCES.includes('settings'), false);
+    const { api, signed } = await codeWith(R.RESOURCES);
+    assert.deepEqual(signed.resources, R.CODE_RESOURCES);
+    assert.equal((await api.get(`${base}/members`)).status, 403);
+    assert.equal((await api.get(`${base}/export?format=csv`)).status, 403);
+    assert.equal((await api.put(base).send({ name: 'x' })).status, 403);
+    assert.equal((await api.post(`${base}/funds`).send({ name: 'x', currency: 'PKR' })).status, 403);
+    assert.equal((await api.get(`${base}/entries`)).status, 200);
+    assert.equal((await api.post(`${base}/entries`).send({})).status, 403); // view only: never a write
   });
 
   it('explicit empty lists mean no pages', async () => {
@@ -126,9 +138,9 @@ describe('page resources', () => {
 
   it('regular accounts without a list keep full access; super admins always have every page', async () => {
     const full = await userWith(undefined, 'full@example.com');
-    await assertMatrix(full, R.RESOURCES);
+    await assertMatrix(full, R.DEFAULT_ALL_RESOURCES);
     const me = await full.get('/api/auth/me');
-    assert.deepEqual(me.body.account.resources, R.RESOURCES);
+    assert.deepEqual(me.body.account.resources, R.DEFAULT_ALL_RESOURCES);
     const list = await ctx.api.get('/api/admin/accounts');
     assert.equal(list.body.accounts.find(a => a.email === 'full@example.com').resourcesSet, false);
 
@@ -236,6 +248,8 @@ describe('resource helpers', () => {
   it('keeps the frontend mirror in step with the server lists', async () => {
     const ui = await import('../../src/auth/resources.mjs');
     assert.deepEqual(ui.RESOURCES, R.RESOURCES);
+    assert.deepEqual(ui.CODE_RESOURCES, R.CODE_RESOURCES);
+    assert.deepEqual(ui.DEFAULT_ALL_RESOURCES, R.DEFAULT_ALL_RESOURCES);
     assert.deepEqual(ui.DEFAULT_CODE_RESOURCES, R.DEFAULT_CODE_RESOURCES);
     assert.deepEqual(ui.LOOKUP_READERS, R.LOOKUP_READERS);
     assert.deepEqual(ui.PARTY_READERS, R.PARTY_READERS);
@@ -246,7 +260,7 @@ describe('resource helpers', () => {
   it('treats a corrupt resource value as no pages, never full access', () => {
     assert.deepEqual(R.effectiveResources({ resources: 'all' }), []);
     assert.deepEqual(R.effectiveResources({ accessCode: true, resources: {} }), []);
-    assert.deepEqual(R.effectiveResources({ resources: null }), R.RESOURCES);
+    assert.deepEqual(R.effectiveResources({ resources: null }), R.DEFAULT_ALL_RESOURCES);
   });
 
   it('decides routes for single-page and no-page accounts', async () => {
@@ -274,5 +288,25 @@ describe('resource helpers', () => {
     const root = { isSuperAdmin: true, resources: [] };
     assert.equal(hasResource(root, 'settings'), true);
     assert.deepEqual(decideRoute('/admin', root), { allowed: true });
+  });
+
+  it('opens the Notebook (diary routes) only for super administrators and admins it was switched on for', async () => {
+    const { decideRoute, routeResource } = await import('../../src/auth/resources.mjs');
+    const full = { resources: ['dashboard', 'ledger', 'documents'] }; // no Notebook page
+    const code = { accessCode: true, resources: R.DEFAULT_CODE_RESOURCES };
+    const root = { isSuperAdmin: true, resources: [] };
+    const chosen = { resources: ['diary'] };
+    for (const route of ['/diary', '/diary/abc', '/diary/abc/def']) {
+      assert.equal(routeResource(route), 'diary', route);
+      assert.deepEqual(decideRoute(route, root), { allowed: true }, route);
+      assert.deepEqual(decideRoute(route, chosen), { allowed: true }, route);
+      for (const who of [full, code]) assert.equal(decideRoute(route, who).allowed, false, route);
+    }
+    for (const route of ['/diary/', '/diary/a/b/c', '/diaryx']) assert.equal(decideRoute(route, root).allowed, false, route);
+    // Opt-in: "every page" for a regular account never includes the Notebook; an access code can never have it.
+    assert.equal(R.effectiveResources({ resources: null }).includes('diary'), false);
+    assert.equal(R.effectiveResources({ accessCode: true, resources: ['diary', 'items'] }).includes('diary'), false);
+    assert.equal(R.effectiveResources({ isSuperAdmin: true }).includes('diary'), true);
+    assert.deepEqual(R.requiredResources('GET', '/diary', {}), []); // not under a book any more: /api/diary checks itself
   });
 });

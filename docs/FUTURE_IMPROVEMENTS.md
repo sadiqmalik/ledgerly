@@ -123,3 +123,7 @@ From `CURRENCIES_DESIGN.md` section 8, all still open:
 ## H. Brief for a future session (copy and adapt)
 
 > Implement item <ID> from `ledger/docs/FUTURE_IMPROVEMENTS.md`. First write a short design note in `ledger/docs/` (schema, API, authorization, UI, tests), then build it following the rules at the top of that file. Do not commit, deploy or touch live data. Run `npm test` once (never in parallel) and `npm run build`, update the docs with the `docs-sync` skill, and report what you verified and what you did not.
+
+## Timestamps on every table (done)
+
+Migration `0022_timestamps.sql` added `created_at` and `updated_at` to every older table (except logs, sessions and pure join tables) and database triggers that fill them, so no code path can forget. Rows from before the migration have empty timestamps and screens show nothing for them. A migration that rebuilds one of these tables must recreate its two triggers.

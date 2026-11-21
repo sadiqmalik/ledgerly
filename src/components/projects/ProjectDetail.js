@@ -22,6 +22,7 @@ import Summary, { Row } from './Summary';
 import ProjectForm from './ProjectForm';
 import EntryForm from './EntryForm';
 import { kindBadge, dateRange, BudgetBar, labelOf } from './shared';
+import Select from '../common/Select';
 
 const Status = ({ e }) => (
   <>
@@ -43,6 +44,7 @@ export default function ProjectDetail({ id }) {
   const [error, setError] = useState('');
   const [actionErr, setActionErr] = useState('');
   const [editing, setEditing] = useState(false);
+  const [duplicating, setDuplicating] = useState(false);
   const [entryDlg, setEntryDlg] = useState(null); // { entry } (entry null = new)
   const [n, setN] = useState(0);
   const [fCat, setFCat] = useState([]);
@@ -212,6 +214,7 @@ export default function ProjectDetail({ id }) {
           <a href={`#/ledger?project=${encodeURIComponent(project.id)}&year=all`} className={btnSecondary}>View in Ledger</a>
         {canEdit && (<>
             <button type="button" className={btnSecondary} onClick={() => setEditing(true)}>Edit</button>
+            <button type="button" className={btnSecondary} onClick={() => setDuplicating(true)}>Duplicate</button>
             <button type="button" className={btnSecondary} onClick={toggleClosed}>{closed ? 'Reopen' : 'Close'}</button>
             {t0srv.count === 0 && <button type="button" className={btnDanger} onClick={del}>Delete</button>}
         </>)}
@@ -284,12 +287,12 @@ export default function ProjectDetail({ id }) {
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">
             <MultiSelect label="Category" allLabel="All categories" value={fCat} onChange={setFCat} options={catOpts} noneLabel="(none)" />
             <MultiSelect label="Party" allLabel="All parties" value={fParty} onChange={setFParty} options={partyOpts} noneLabel="(none)" />
-            <select aria-label="Status" className={`${inputCls} !mt-0`} value={fStatus} onChange={e => setFStatus(e.target.value)}>
+            <Select aria-label="Status" className={`${inputCls} !mt-0`} value={fStatus} onChange={e => setFStatus(e.target.value)}>
               <option value="">All statuses</option><option value="paid">Paid</option><option value="pending">Pending</option>
-            </select>
-            {hasIn && <select aria-label="Direction" className={`${inputCls} !mt-0`} value={fDir} onChange={e => setFDir(e.target.value)}>
+            </Select>
+            {hasIn && <Select aria-label="Direction" className={`${inputCls} !mt-0`} value={fDir} onChange={e => setFDir(e.target.value)}>
               <option value="">Debit and credit</option><option value="dr">Debit (out)</option><option value="cr">Credit (in / refunds)</option>
-            </select>}
+            </Select>}
             <input type="search" aria-label="Search entries" placeholder="Search" className={`${inputCls} !mt-0`} value={fQ} onChange={e => setFQ(e.target.value)} />
             {keys.map(k => (
               <MultiSelect key={k} label={lbl(k)} allLabel={`All ${lbl(k).toLowerCase()}`} value={fMeta[k] || []}
@@ -378,9 +381,14 @@ export default function ProjectDetail({ id }) {
         <ProjectForm bookId={book.id} project={project} funds={funds} onClose={() => setEditing(false)}
           onSaved={() => { setEditing(false); refresh(); }} />
       )}
+      {duplicating && (
+        <ProjectForm bookId={book.id} copyOf={project} funds={funds} onClose={() => setDuplicating(false)}
+          onSaved={created => { setDuplicating(false); if (created?.id) window.location.hash = `#/projects/${created.id}`; }} />
+      )}
       {entryDlg && (
         <EntryForm bookId={book.id} project={project} metaKeys={keys} labelOf={lbl} categories={categories}
-          entry={entryDlg.entry} canEdit={canEdit} onClose={() => setEntryDlg(null)}
+          entry={entryDlg.entry} copyOf={entryDlg.copy} canEdit={canEdit} onClose={() => setEntryDlg(null)}
+          onDuplicate={e => setEntryDlg({ entry: null, copy: e })}
           onSaved={() => { setEntryDlg(null); refresh(); }} />
       )}
     </section>

@@ -130,7 +130,12 @@ ledger/
 │   ├── 0015_entry_documents.sql  links between entries and documents (entry_documents)
 │   ├── 0016_loan_settled.sql     loan_registers.settled_at (NULL = active)
 │   ├── 0017_loan_entry_lender.sql loan_entries.lender (which lender an entry is for, NULL = not assigned)
-│   └── 0018_access_code_loans.sql loans shared with access codes (access_code_loans)
+│   ├── 0018_access_code_loans.sql loans shared with access codes (access_code_loans)
+│   ├── 0019_diary_notes.sql diary notes (diary_notes)
+│   ├── 0020_diary_categories.sql diary categories, entry kind and yearly repeat
+│   ├── 0021_diary_private.sql owner column for diary categories
+│   ├── 0022_timestamps.sql created_at / updated_at columns and triggers on the older tables
+│   └── 0023_diary_notebooks.sql notebooks, linked to a ledger or none
 ├── worker/
 │   ├── index.js             entry: fetch() and scheduled()
 │   ├── api.js               Hono app, middleware, error format
@@ -143,7 +148,7 @@ ledger/
 │       ├── reports.js         projects (with moveEntries), yearly, pivot, profit report, year close and reopen
 │       ├── appearance.js      ledger-wide palette and list layout
 │       ├── entryCounts.js     live entry counts per fund, holder, party, category
-│       ├── items.js           item tracker: items and locations
+│       ├── items.js           Item Vault: items and locations
 │       ├── documents.js       document records, R2 files and entry links
 │       ├── export.js          JSON and CSV export
 │       └── validate.js        zod helpers, role guard, year-lock guard
@@ -192,7 +197,7 @@ ledger/
 │       ├── projects/          list, detail, forms, summary bar
 │       ├── reports/           yearly, pivot (PivotView), profit, medical, charts/
 │       ├── documents/         document log and file upload
-│       ├── items/             item tracker page
+│       ├── items/             Item Vault page
 │       ├── admin/             super admin screen: accounts, access codes, ResourcePicker
 │       ├── settings/          tabs: funds, accounts, categories, people, years, ledger, data,
 │       │                      appearance, dashboard; CrudTab (cards or table), ui.js (useEntryCounts, EntryCount)
@@ -670,14 +675,17 @@ All paths start with `/api`. `:b` is the book id. "Role" is the book role needed
 | `GET /admin/accounts`, `POST /admin/accounts` | super admin | none | List and create accounts. |
 | `PUT /admin/accounts/:id/memberships`, `/resources`, `/status` | super admin | none | Set book roles, page permissions, enable or disable. |
 | `POST /admin/accounts/:id/password`, `DELETE /admin/accounts/:id` | super admin | none | Reset a password, delete an account. |
-| `GET` and `POST /admin/access-codes`, `PUT /admin/access-codes/:id/resources`, `POST /admin/access-codes/:id/reset`, `POST /admin/access-codes/:id/revoke`, `DELETE /admin/access-codes/:id` | super admin | none | Manage access codes. |
+| `GET` and `POST /admin/access-codes`, `PUT /admin/access-codes/:id/resources`, `POST /admin/access-codes/:id/reset`, `POST /admin/access-codes/:id/revoke`, `POST /admin/access-codes/:id/restore`, `DELETE /admin/access-codes/:id` | super admin | none | Manage access codes. |
 | `GET /books` | any | none | The books the account can see. Inactive ledgers are listed only for super administrators, with `active: false`. |
 | `POST /books` | super admin | none | Create a book. |
 | `GET /currencies` | any signed-in account | none | The managed currency list: code, name, alias and active, sorted by code. |
 | `POST /currencies`, `PUT /currencies/:code`, `DELETE /currencies/:code` | super admin | none | Add a currency (409 if the code exists), change its name, alias or `active`, or delete it. Delete is 409 while a book, fund, account, loan or entry uses it. The code never changes. |
 | `PUT /books/:b` | admin | settings | Rename, change base currency. |
 | `PUT /books/:b/active` | admin (`active: false`), super admin (`active: true`) | settings | Deactivate or reactivate a ledger. Nothing is deleted. |
-| `DELETE /books/:b` | super admin | none | Delete permanently. 403 if not a super administrator, 404 if unknown, 409 if the ledger is still active ("Deactivate the ledger first"), 409 if it has entries or documents. |
+| `DELETE /books/:b?confirm=<name>` | super admin | none | Delete the ledger with everything in it (entries, documents and their R2 files, diary notes, settings). 403 if not a super administrator, 404 if unknown, 400 if `confirm` is not the exact ledger name. |
+| `GET` and `POST /diary/notebooks`, `PUT` and `DELETE /diary/notebooks/:n` | Notebook page; ledger role decides | page `diary` | List the notebooks the caller may open (linked ones by ledger role, unlinked ones only for their owning super admin), create (an unlinked one only by a super admin, a linked one needs Editor in that ledger), rename or relink (owner only), delete (owner or ledger admin). 404 when not allowed to open. |
+| `GET /diary/notebooks/:n/entries`, `/upcoming`, `/names`, `/categories` | viewer of the linked ledger | page `diary` | Entries (`status`, `project`, `category`, `kind`, `q`, `from`, `to`, `important`), important dates in the next `days`, names used, categories with counts and next date. |
+| `POST /diary/notebooks/:n/entries`, `PUT` and `DELETE .../entries/:id`, `POST` and `PUT` and `DELETE .../categories[/:cid]` | editor of the linked ledger (or the owning super admin) | page `diary` | Create, edit (`active` disables or enables), delete entries and categories. |
 | `GET /books/:b/members`, `POST /books/:b/members`, `PUT /books/:b/members/:accountId` | admin | settings | List members, add one, change a role. |
 | `GET /books/:b/summary` | viewer | dashboard | Balances, usable, reserved, wallets, year figures (`asOf` optional). |
 | `GET /books/:b/entries` | viewer | ledger (or projects with `project=`) | Filtered, paged list; `opening=1` adds opening rows. Each row has `docCount`, the number of linked documents. |
@@ -703,7 +711,7 @@ All paths start with `/api`. `:b` is the book id. "Role" is the book role needed
 | `GET /books/:b/documents/for-entry/:entryId` | viewer | documents | Documents linked to one entry. 404 if the entry is not in this book or is deleted. |
 | `PUT /books/:b/documents/for-entry/:entryId` | editor | documents | Replace the documents linked to one entry (body `documentIds`, at most 50). |
 | `POST /books/:b/documents`, `PUT /books/:b/documents/:id`, `PUT /books/:b/documents/:id/file`, `DELETE /books/:b/documents/:id` | editor | documents | Create, edit (both accept `entryIds`), upload (raw bytes), delete (also removes the document's links). |
-| `GET`, `POST`, `PUT /:id`, `DELETE /:id` on `/books/:b/items` and `/books/:b/item-locations` | viewer for GET, editor for writes | items | Item tracker. |
+| `GET`, `POST`, `PUT /:id`, `DELETE /:id` on `/books/:b/items` and `/books/:b/item-locations` | viewer for GET, editor for writes | items | Item Vault. |
 | `GET /books/:b/appearance` | viewer | none | The ledger default look: `{ palette, listView }`. Every member can read it, whatever pages they have. |
 | `PUT /books/:b/appearance` | admin | settings | Set `palette` (one of 13) and or `listView` (`cards` or `table`). Stored in `book_settings` keys `appearance.palette` and `appearance.listView`. |
 | `GET /books/:b/export` | viewer for `format=csv`, admin for `format=json` | settings | CSV or full JSON export. |
@@ -816,7 +824,7 @@ Every read and write is wrapped in a `try/catch`, so the app works with storage 
 | Reports | `components/reports/` | Yearly closing per fund, pivot (category, party, project or fund by year), profit trend, medical per year, with SVG charts in `reports/charts/`. |
 | Documents | `components/documents/` | The report log with optional file attachment and the **Entries** field (`EntryPicker.js`). The paperclip count on ledger rows is `DocCount.js`. |
 | Settings | `components/settings/` | A grouped tab strip. **Ledger setup:** Funds, Accounts (holders), Categories, People, Years (a card grid with the Check result inside each card; close and reopen asks through `ConfirmDialog`), Ledger (book name, members, and the deactivate or reactivate box), Data (exports). Every tab uses a flexible grid: boxes sit side by side on wide screens and wrap on small ones. On the Ledger tab, Details, Members and the deactivate box sit side by side: two columns from 1024px, three from 1280px, and one column on small screens. **Display:** Appearance (`AppearanceTab`: palette and list layout), Dashboard (`DashboardTab`: List, Pie, Bars or Graph). Who can edit each tab, and which tabs hide when read-only, is a table in `settings/index.js`. |
-| Items | `components/items/` | The item tracker. |
+| Items | `components/items/` | The Item Vault. |
 | Admin | `components/admin/` | Super administrator screen: accounts, access codes, the `ResourcePicker` for page permissions, and Ledgers (every ledger, with an Inactive badge, Reactivate and Delete permanently). |
 
 ### 8.5 Shared components (`components/common/`)
@@ -887,7 +895,7 @@ Memberships are a JSON list on the account: `[{"bookId": "...", "role": "viewer|
 
 **Loan registers.** The screens call these **Loans** (a loan = one register); the code, routes and tables keep the register names. Access to a register is a role in the account's `loan_memberships` (`[{"registerId": "...", "role": "viewer|editor|admin"}]`), read by `loanRoleFor` and `canAccessLoan` in `server/auth/roles.js`. A super administrator is admin on every register. Viewers read; editors add, change and soft-delete entries; admins also edit the register and delete it, but only when it has no entries. Anyone with the `loans` page may create a register, and the creator becomes its admin. Only a super administrator can set register roles (`PUT /api/admin/accounts/:id/loan-memberships`); a register admin cannot. Every `/api/loans` request is checked in order: signed in; then the `loans` page (403 otherwise); then, for `/api/loans/:r/...`, a role on that register (403 for an ordinary account, whether or not the register exists; a super administrator gets 404 for a missing register); then the action's own minimum role. An entry id only works under its own register (404 otherwise), and the register list returns only the registers the account may see. An access-code session has no loan memberships of its own: the code principal gets a viewer membership for every register listed in `access_code_loans` (migration `0018`), read on each request, so sharing and unsharing apply at once. A code can therefore read those loans and never create, edit, settle or delete (`POST /loans` returns 403 for any code). Sharing is edited by a loan admin or a super administrator; rows are removed when the register or the code is deleted, or the code is revoked.
 
-**Deactivate, reactivate, delete.** A ledger is never deleted in one step. An admin deactivates it from Settings > Ledger (`PUT /books/:b/active` with `active: false`, after typing the ledger name). It then disappears for every member, and for super administrators it stays visible with an Inactive badge. Only a super administrator can reactivate it (`active: true`), and only a super administrator can delete it permanently (`DELETE /books/:b`), which needs the ledger inactive and with no entries or documents left. Deactivating changes one column (`books.active`); no data is touched.
+**Disable, enable, delete.** Administration > All ledgers has Disable, Enable and Delete on every ledger card. Disable is the same switch as Deactivate (`books.active`): the ledger leaves the side panel, even for super administrators (unless it is the open one). Delete is for super administrators and removes the ledger with all its data after the name is typed (`DELETE /books/:b?confirm=`; R2 files under `docs/<book>/` are removed too). Earlier design: an admin deactivates it from Settings > Details (`PUT /books/:b/active` with `active: false`, after typing the ledger name). It then disappears for every member, and for super administrators it stays visible with an Inactive badge. Only a super administrator can reactivate it (`active: true`), and only a super administrator can delete it permanently (`DELETE /books/:b`), which needs the ledger inactive and with no entries or documents left. Deactivating changes one column (`books.active`); no data is touched.
 
 The order of checks for a request under `/api/books/:b/` is shown below. It is the same middleware as section 6, plus the role rules of section 9.1.
 
@@ -913,7 +921,7 @@ flowchart TD
 - **CSRF.** The cookie is `SameSite=Strict`, and in addition every write checks that `Origin`, when present, is the allowed origin (`ALLOWED_ORIGIN`; `http://localhost:3100` and `http://127.0.0.1:3100` are added only over plain http for local work). Writes must have `Content-Type: application/json`, which a plain HTML form cannot send. The file upload route is exempt from the content-type rule but not from the origin check.
 - **Cookie.** `lsid`, `HttpOnly`, `SameSite=Strict`, `Path=/api`, `Max-Age` equal to the idle limit, `Secure` except over plain http (or when `COOKIE_SECURE=false`).
 - **Sessions.** Random 32-byte value, only its SHA-256 stored, idle and absolute expiry, deleted on disable, password change and reset.
-- **Passwords.** PBKDF2-SHA256, 100,000 iterations, random salt, constant-time compare, minimum 12 characters. Unknown accounts take about the same time as wrong passwords. Five failures lock the account for 15 minutes.
+- **Passwords.** PBKDF2-SHA256, 100,000 iterations, random salt, constant-time compare, minimum 6 characters. Unknown accounts take about the same time as wrong passwords. Five failures lock the account for 15 minutes.
 - **SQL.** Every value is a bound parameter. The only text put into SQL is fixed internal table and column names chosen from code, never from the request. `LIKE` search text is escaped.
 - **Input.** zod validates every body and query. Bodies are `.strict()`, so unknown fields are rejected. Dates must be real dates. Amounts must be positive integers.
 - **Book scoping.** Every query has `book_id`, and every referenced id is checked to belong to the same book (404 otherwise).

@@ -15,6 +15,7 @@ import useProjectNames from '../../hooks/useProjectNames';
 import { errorMessage, findParty } from '../common/format';
 import { formatMoney, parseMoney } from '../../utils/money';
 import QuantityPriceFields from '../common/QuantityPriceFields';
+import Select from '../common/Select';
 import {
   amountMinorFromQuantityAndUnitPrice,
   parseQuantityInput,
@@ -87,7 +88,7 @@ function EntryDocuments({ bookId, entryId, canChange, onChanged }) {
 }
 
 // Side panel to view or edit one entry (partial PUT) and delete it. Viewers get a read-only view.
-export default function EntryPanel({ entry, onClose, onChanged, onLinksChanged }) {
+export default function EntryPanel({ entry, onClose, onChanged, onLinksChanged, onDuplicate }) {
   const { label: curLabel } = useCurrencies();
   const { book, canEdit: mayEdit, funds, categories, parties, isClosedDate, can } = useLedger();
   const projectNames = useProjectNames();
@@ -98,7 +99,9 @@ export default function EntryPanel({ entry, onClose, onChanged, onLinksChanged }
     .map(([id, p]) => ({ id, name: p.status === 'closed' ? `${p.name} (closed)` : p.name }))
     .sort((a, b) => a.name.localeCompare(b.name));
   const entryQP = quantityPriceFromEntry(entry);
-  const entryClosed = isClosedDate(entry.date);
+  // A duplicate is a new, unsaved entry (no id) pre-filled from another one; Save creates it.
+  const isNew = !entry.id;
+  const entryClosed = !isNew && isClosedDate(entry.date);
   const canEdit = mayEdit && !entryClosed;
   const linked = Boolean(entry.linkId);
   const [f, setF] = useState({
@@ -127,6 +130,25 @@ export default function EntryPanel({ entry, onClose, onChanged, onLinksChanged }
     e.preventDefault();
     setError('');
     if (newClosed) return;
+    if (isNew) {
+      const qp = validateQuantityPriceInputs(f.quantity, f.unitPrice);
+      if (qp.error) { setError(qp.error); return; }
+      const rate = f.rate.trim() === '' ? null : Number(f.rate);
+      if (rate != null && !Number.isFinite(rate)) { setError('Rate must be a number.'); return; }
+      const create = { date: f.date, fundId: f.fundId, direction: f.direction, quantity: qp.quantity, unitPrice: qp.unitPrice, amount: qp.amount, exclude: f.exclude };
+      if (f.categoryId) create.categoryId = f.categoryId;
+      if (f.projectId) create.projectId = f.projectId;
+      if (f.comment.trim()) create.comment = f.comment;
+      if (rate != null) create.rate = rate;
+      if (f.party.trim()) {
+        const p = findParty(parties, f.party);
+        if (p) create.partyId = p.id; else create.partyName = f.party.trim();
+      }
+      setBusy(true);
+      try { await dataAPI.createEntry(book.id, create); onChanged(); }
+      catch (err) { setError(errorMessage(err)); setBusy(false); }
+      return;
+    }
     const body = {};
     if (f.date !== entry.date) body.date = f.date;
     if (f.comment !== (entry.comment || '')) body.comment = f.comment.trim() === '' ? null : f.comment;
@@ -184,7 +206,7 @@ export default function EntryPanel({ entry, onClose, onChanged, onLinksChanged }
 
   return (
     <>
-    <Modal title={canEdit ? 'Edit entry' : 'Entry'} onClose={onClose} side>
+    <Modal title={isNew ? 'Duplicate entry' : canEdit ? 'Edit entry' : 'Entry'} onClose={onClose}>
       <form onSubmit={save}>
         {entryClosed && <div className="alert alert-error" role="status">{entry.date.slice(0, 4)} is closed. Reopen it in Settings &rsaquo; Years to make changes.</div>}
         {newClosed && <div className="alert alert-error" role="alert">{f.date.slice(0, 4)} is closed. Pick a date in an open year, or reopen it in Settings &rsaquo; Years.</div>}
@@ -193,25 +215,25 @@ export default function EntryPanel({ entry, onClose, onChanged, onLinksChanged }
         <div className="form-group"><label htmlFor="ep-date">Date</label>
           <input id="ep-date" type="date" min="1900-01-01" max="9999-12-31" value={f.date} onChange={set('date')} disabled={locked} required /></div>
         <div className="form-group"><label htmlFor="ep-fund">Fund</label>
-          <select id="ep-fund" value={f.fundId} onChange={set('fundId')} disabled={lockOther}>
+          <Select id="ep-fund" value={f.fundId} onChange={set('fundId')} disabled={lockOther}>
             {funds.map(x => <option key={x.id} value={x.id}>{x.name} ({curLabel(x.currency)})</option>)}
-          </select></div>
+          </Select></div>
         <div className="form-group">
           <SideSwitch {...dirProps} value={f.direction}
             onChange={v => setF(s => ({ ...s, direction: v }))} disabled={lockOther} /></div>
         <div className="form-group"><label htmlFor="ep-party">Party</label>
           <PartyInput id="ep-party" value={f.party} onChange={v => setF(s => ({ ...s, party: v }))} parties={parties} disabled={lockOther} /></div>
         <div className="form-group"><label htmlFor="ep-cat">Category</label>
-          <select id="ep-cat" value={f.categoryId} onChange={set('categoryId')} disabled={lockOther}>
+          <Select id="ep-cat" value={f.categoryId} onChange={set('categoryId')} disabled={lockOther}>
             <option value="">(none)</option>
             {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select></div>
+          </Select></div>
         {projectOptions.length > 0 && (
           <div className="form-group"><label htmlFor="ep-project">Project</label>
-            <select id="ep-project" value={f.projectId} onChange={set('projectId')} disabled={lockOther}>
+            <Select id="ep-project" value={f.projectId} onChange={set('projectId')} disabled={lockOther}>
               <option value="">(none)</option>
               {projectOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
+            </Select>
             <p className="text-xs text-muted-foreground mt-1">Moving an entry to a project (or out of one) does not change the ledger totals. To leave an entry out of the totals, turn off &ldquo;Count in ledger totals&rdquo;.</p>
           </div>
         )}
@@ -241,10 +263,11 @@ export default function EntryPanel({ entry, onClose, onChanged, onLinksChanged }
         {!linked && (
           <div className="mb-3"><Toggle label="Count in ledger totals" hint="Off keeps the entry as a record, dimmed, but leaves it out of the fund balance and all totals." checked={!f.exclude} onChange={v => setF(s => ({ ...s, exclude: !v }))} disabled={locked} /></div>
         )}
-        {can('documents') && <EntryDocuments bookId={book.id} entryId={entry.id} canChange={mayEdit} onChanged={onLinksChanged || (() => {})} />}
-        {canEdit && !linked && (
-          <div className="mb-3">
+        {!isNew && can('documents') && <EntryDocuments bookId={book.id} entryId={entry.id} canChange={mayEdit} onChanged={onLinksChanged || (() => {})} />}
+        {canEdit && !linked && !isNew && (
+          <div className="mb-3 flex flex-wrap gap-2">
             <button type="button" className="btn" onClick={() => setRefunding(true)} disabled={busy}>Refund / Balance</button>
+            {onDuplicate && <button type="button" className="btn" onClick={() => onDuplicate(entry)} disabled={busy}>Duplicate</button>}
           </div>
         )}
         {canEdit && (
@@ -253,7 +276,7 @@ export default function EntryPanel({ entry, onClose, onChanged, onLinksChanged }
               <button type="submit" className="btn btn-primary" disabled={busy || newClosed}>Save</button>
               <button type="button" className="btn" onClick={onClose}>Cancel</button>
             </div>
-            <button type="button" className="btn btn-danger" onClick={() => setConfirmingDelete(true)} disabled={busy}>Delete</button>
+            {!isNew && <button type="button" className="btn btn-danger" onClick={() => setConfirmingDelete(true)} disabled={busy}>Delete</button>}
           </div>
         )}
       </form>

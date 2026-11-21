@@ -1,0 +1,76 @@
+import React, { useCallback, useEffect, useState } from 'react';
+import { api } from '../../services/dataAPI';
+import useHashRoute from '../../hooks/useHashRoute';
+import usePageName from '../../utils/pageNames';
+import Stamp from '../common/Stamp';
+import { errorMessage } from '../common/format';
+import { btnPrimary } from '../settings/ui';
+import NotebookForm from './NotebookForm';
+import NotebookPage from './NotebookPage';
+import { pill } from './shared';
+
+const safeDecode = s => { try { return decodeURIComponent(s); } catch { return s; } };
+
+// /diary lists the notebooks you can use; /diary/<notebook> opens one (its categories and entries); /diary/<notebook>/<category>
+// opens a category. A notebook is linked to a ledger (that ledger's access decides who can use it) or to none (only you).
+export default function Notebooks() {
+  const route = useHashRoute();
+  const pageName = usePageName();
+  const [, nbId, catId] = route.split('/').filter(Boolean).map(safeDecode);
+  const [list, setList] = useState(null);
+  const [error, setError] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [n, setN] = useState(0);
+  const reload = useCallback(() => setN(x => x + 1), []);
+
+  useEffect(() => {
+    let off = false;
+    api.get('/diary/notebooks').then(r => { if (!off) { setList(r.data); setError(''); } }).catch(e => { if (!off) { setList([]); setError(errorMessage(e)); } });
+    return () => { off = true; };
+  }, [n]);
+
+  if (nbId) {
+    if (!list) return <p className="p-4 text-sm text-muted-foreground" role="status">Loading...</p>;
+    const notebook = list.find(x => x.id === nbId);
+    if (!notebook) {
+      return (
+        <section className="space-y-3 p-4 sm:p-6">
+          <p role="alert" className="text-sm text-negative">{error || 'That notebook does not exist or you cannot open it.'}</p>
+          <a href="#/diary" className="text-sm underline">Back to all {pageName('diary').toLowerCase()}s</a>
+        </section>
+      );
+    }
+    return <NotebookPage key={notebook.id} nbId={notebook.id} catId={catId || ''} notebook={notebook} reloadNotebooks={reload} />;
+  }
+
+  return (
+    <section className="min-w-0 space-y-4 p-4 sm:p-6">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h2 className="text-xl font-semibold text-foreground">{pageName('diary')}s</h2>
+          <p className="text-xs text-muted-foreground">Each notebook has its own categories and entries. Link one to a ledger to share it by ledger access, or keep it private.</p>
+        </div>
+        <button type="button" className={btnPrimary} onClick={() => setCreating(true)}>New notebook</button>
+      </div>
+      {error && <p role="alert" className="text-sm text-negative">{error}</p>}
+      {list && !list.length && !error && <p className="text-sm text-muted-foreground">No notebooks yet. Use New notebook to create one.</p>}
+      {!!list?.length && (
+        <div className="grid items-stretch gap-3 grid-cols-[repeat(auto-fill,minmax(min(100%,18rem),1fr))]">
+          {list.map(nb => (
+            <a key={nb.id} href={`#/diary/${nb.id}`} className="flex h-full flex-col rounded-xl border border-border bg-card p-4 no-underline text-foreground hover:bg-muted/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
+              <div className="flex items-start justify-between gap-2">
+                <h2 className="min-w-0 truncate text-lg font-semibold">{nb.name}</h2>
+                {!nb.canEdit && <span className={`${pill} shrink-0`}>view only</span>}
+              </div>
+              {nb.description && <p className="mt-1 line-clamp-3 whitespace-pre-wrap break-words text-sm text-muted-foreground">{nb.description}</p>}
+              <p className="mt-2 text-xs text-muted-foreground">{nb.bookName ? `Ledger: ${nb.bookName}` : 'Private, not linked to a ledger'}</p>
+              <p className="text-xs text-muted-foreground">{nb.categoryCount} {nb.categoryCount === 1 ? 'category' : 'categories'} · {nb.dateCount} {nb.dateCount === 1 ? 'date' : 'dates'} · {nb.noteCount} {nb.noteCount === 1 ? 'note' : 'notes'}</p>
+              <Stamp createdAt={nb.createdAt} updatedAt={nb.updatedAt} className="mt-auto pt-2 text-xs text-muted-foreground" />
+            </a>
+          ))}
+        </div>
+      )}
+      {creating && <NotebookForm onClose={() => setCreating(false)} onSaved={nb => { setCreating(false); reload(); if (nb?.id) window.location.hash = `#/diary/${nb.id}`; }} />}
+    </section>
+  );
+}

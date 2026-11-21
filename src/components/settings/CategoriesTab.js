@@ -1,5 +1,6 @@
 import CrudTab from './CrudTab';
 import { Field, SideSwitch, inputCls } from './ui';
+import Select from '../common/Select';
 
 // Categories have no archived state: a category that an entry uses cannot be deleted (the API returns 409).
 export default function CategoriesTab({ bookId, canEdit }) {
@@ -30,12 +31,12 @@ export default function CategoriesTab({ bookId, canEdit }) {
             <input className={inputCls} value={d.name} onChange={e => update({ name: e.target.value })} />
           </Field>
           <Field label="Parent">
-            <select className={inputCls} value={d.parentId} onChange={e => update({ parentId: e.target.value })}>
+            <Select className={inputCls} value={d.parentId} onChange={e => update({ parentId: e.target.value })}>
               <option value="">None (top level)</option>
               {ctx.rows
                 .filter(c => c.id !== ctx.editingId)
                 .map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+            </Select>
           </Field>
           <Field label="Default direction">
             <SideSwitch label="Credit by default" hint="On: new entries in this category start as credit, money in. Off: they start as debit, money out." offValue="dr" onValue="cr" value={d.defaultDirection} onChange={v => update({ defaultDirection: v })} />

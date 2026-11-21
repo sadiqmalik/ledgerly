@@ -3,28 +3,33 @@ import { api } from '../../services/dataAPI';
 import { useAuth } from '../../auth/AuthContext';
 import { useBooks } from '../../hooks/BooksContext';
 import ConfirmDialog from '../common/ConfirmDialog';
+import Modal from '../common/Modal';
 import NewLedgerModal from '../NewLedgerModal';
 import AccessCodesPanel from './AccessCodesPanel';
 import CurrenciesPanel from './CurrenciesPanel';
 import ResourcePicker, { pagesText } from './ResourcePicker';
-import { RESOURCES } from '../../auth/resources.mjs';
-import { errorText, inputCls, btnPrimary, btnSecondary, btnDanger, Badge } from '../settings/ui';
+import { DEFAULT_ALL_RESOURCES } from '../../auth/resources.mjs';
+import { errorText, inputCls, btnPrimary, btnSecondary, btnDanger, Badge, Toggle } from '../settings/ui';
 import CurrencyLabel from '../common/CurrencyLabel';
+import Select from '../common/Select';
+import Stamp from '../common/Stamp';
 
-// Super administrators only. Roles: a super administrator can do everything in every
-// ledger; for each ledger a user is an Admin, Editor or Viewer, or has no access to it.
+// Super administrators only. Roles: a super administrator can do everything in every ledger; for each ledger a user is
+// an Admin, Editor or Viewer, or has no access to it. Everything here is app-wide; the open ledger's own setup (funds,
+// categories, members, ...) is on the Settings page.
+const GROUPS = ['People and access', 'Ledgers', 'Shared lists'];
 const TABS = [
-  { key: 'users', label: 'Users' },
-  { key: 'ledgers', label: 'Ledgers' },
-  { key: 'currencies', label: 'Currencies' },
-  { key: 'codes', label: 'Access codes' },
+  { key: 'users', label: 'Admins', group: 'People and access' },
+  { key: 'codes', label: 'Access codes', group: 'People and access' },
+  { key: 'ledgers', label: 'All ledgers', group: 'Ledgers' },
+  { key: 'currencies', label: 'Currencies', group: 'Shared lists' },
 ];
 
 const ROLES = [
   { value: 'none', label: 'No access' },
   { value: 'viewer', label: 'Viewer: read only' },
   { value: 'editor', label: 'Editor: add and change entries' },
-  { value: 'admin', label: 'Admin: also settings and users' },
+  { value: 'admin', label: 'Admin: also settings and members' },
 ];
 
 const ROLE_TEXT = { admin: 'Admin', editor: 'Editor', viewer: 'Viewer' };
@@ -37,33 +42,40 @@ const LOAN_ROLES = [
   { value: 'admin', label: 'Admin: also edit and delete the loan' },
 ];
 
-const MIN_PASSWORD = 12;
+const MIN_PASSWORD = 6;
 
 export default function AdminScreen() {
   const [tab, setTab] = useState('users');
   return (
     <section className="w-full min-w-0 space-y-5">
       <div>
-        <h2 className="text-xl font-semibold text-foreground">Users &amp; ledgers</h2>
-        <p className="text-sm text-muted-foreground">Visible to super administrators only.</p>
+        <h2 className="text-xl font-semibold text-foreground">Admins &amp; access</h2>
+        <p className="text-sm text-muted-foreground">Visible to super administrators only. Admins (super admins and normal admins), access codes, all ledgers and the currency list. The open ledger's own setup is under Settings.</p>
       </div>
 
-      <div role="tablist" aria-label="Admin sections" className="inline-flex gap-1 rounded-xl border border-border bg-card p-1">
-        {TABS.map(t => {
-          const selected = t.key === tab;
-          return (
-            <button
-              key={t.key}
-              type="button"
-              role="tab"
-              aria-selected={selected}
-              onClick={() => setTab(t.key)}
-              className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${selected ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-            >
-              {t.label}
-            </button>
-          );
-        })}
+      <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-2 md:flex-row md:gap-0">
+        {GROUPS.map((group, i) => (
+          <div key={group} className={`min-w-0 flex-1 ${i > 0 ? 'md:border-l md:border-border md:pl-4' : ''}`}>
+            <p className="px-3 pt-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">{group}</p>
+            <div role="tablist" aria-label={group} className="flex gap-1 overflow-x-auto p-1">
+              {TABS.filter(t => t.group === group).map(t => {
+                const selected = t.key === tab;
+                return (
+                  <button
+                    key={t.key}
+                    type="button"
+                    role="tab"
+                    aria-selected={selected}
+                    onClick={() => setTab(t.key)}
+                    className={`whitespace-nowrap rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${selected ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                  >
+                    {t.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </div>
 
       {tab === 'users' ? <UsersPanel /> : tab === 'ledgers' ? <LedgersPanel /> : tab === 'currencies' ? <CurrenciesPanel /> : <AccessCodesPanel />}
@@ -88,7 +100,7 @@ function AccessEditor({ books, access, onChange, disabled }) {
       {books.map(b => (
         <label key={b.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm">
           <span className="min-w-0 truncate font-medium text-foreground">{b.name}</span>
-          <select
+          <Select
             aria-label={`Role in ${b.name}`}
             className={`${inputCls} !mt-0 !w-auto`}
             value={access[b.id] || 'none'}
@@ -96,7 +108,7 @@ function AccessEditor({ books, access, onChange, disabled }) {
             onChange={e => onChange({ ...access, [b.id]: e.target.value })}
           >
             {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-          </select>
+          </Select>
         </label>
       ))}
     </div>
@@ -120,7 +132,7 @@ function LoanAccessEditor({ registers, access, onChange, disabled }) {
       {registers.map(r => (
         <label key={r.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm">
           <span className="min-w-0 truncate font-medium text-foreground">{r.name}</span>
-          <select
+          <Select
             aria-label={`Loan role in ${r.name}`}
             className={`${inputCls} !mt-0 !w-auto`}
             value={access[r.id] || 'none'}
@@ -128,7 +140,7 @@ function LoanAccessEditor({ registers, access, onChange, disabled }) {
             onChange={e => onChange({ ...access, [r.id]: e.target.value })}
           >
             {LOAN_ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-          </select>
+          </Select>
         </label>
       ))}
     </div>
@@ -168,9 +180,9 @@ function UsersPanel() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">
-          {accounts ? `${accounts.length} ${accounts.length === 1 ? 'user' : 'users'}.` : ''} Roles are set per ledger.
+          {accounts ? `${accounts.length} ${accounts.length === 1 ? 'admin' : 'admins'}.` : ''} A super admin has everything. A normal admin has only the ledgers, loans and pages you give.
         </p>
-        {!adding && <button type="button" className={btnPrimary} onClick={() => { setAdding(true); setNotice(''); }}>Add user</button>}
+        <button type="button" className={btnPrimary} onClick={() => { setAdding(true); setNotice(''); }}>Add admin</button>
       </div>
 
       {error && <p role="alert" className="rounded-lg bg-muted px-3 py-2 text-sm text-negative">{error}</p>}
@@ -185,7 +197,7 @@ function UsersPanel() {
         />
       )}
 
-      {!accounts && !error && <p className="text-sm text-muted-foreground">Loading users...</p>}
+      {!accounts && !error && <p className="text-sm text-muted-foreground">Loading admins...</p>}
 
       {accounts && (
         <ul className="grid gap-3 xl:grid-cols-2" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
@@ -215,8 +227,8 @@ function AddUserForm({ books, registers, onCancel, onDone }) {
   const [password, setPassword] = useState('');
   const [access, setAccess] = useState(() => accessFrom(books, []));
   const [loanAccess, setLoanAccess] = useState(() => loanAccessFrom(registers, []));
-  const [limitPages, setLimitPages] = useState(false);
-  const [pages, setPages] = useState([...RESOURCES]);
+  const [isSuper, setIsSuper] = useState(false);
+  const [pages, setPages] = useState([...DEFAULT_ALL_RESOURCES]); // the Notebook is off until you switch it on
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -226,7 +238,7 @@ function AddUserForm({ books, registers, onCancel, onDone }) {
     setBusy(true);
     setError('');
     try {
-      await api.post('/admin/accounts', { email: email.trim(), name: name.trim(), password, memberships: membershipsFrom(access), loanMemberships: loanMembershipsFrom(loanAccess), resources: limitPages ? pages : null });
+      await api.post('/admin/accounts', { email: email.trim(), name: name.trim(), password, isSuperAdmin: isSuper, ...(isSuper ? {} : { memberships: membershipsFrom(access), loanMemberships: loanMembershipsFrom(loanAccess), resources: pages }) });
       onDone(`${email.trim()} was added. Give them the password in person; they can change it after signing in.`);
     } catch (err) {
       setError(errorText(err));
@@ -236,44 +248,48 @@ function AddUserForm({ books, registers, onCancel, onDone }) {
   };
 
   return (
-    <form onSubmit={submit} className="space-y-4 rounded-xl border border-border bg-card p-4 md:p-5">
-      <h3 className="font-semibold text-foreground">New user</h3>
-      <div className="grid gap-3 md:grid-cols-3">
+    <Modal title="Add admin" onClose={onCancel} wide>
+    <form onSubmit={submit} className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2">
         <label className="block text-sm font-medium text-foreground">Name
           <input className={inputCls} value={name} onChange={e => setName(e.target.value)} required maxLength={120} />
         </label>
         <label className="block text-sm font-medium text-foreground">Email
           <input type="email" className={inputCls} value={email} onChange={e => setEmail(e.target.value)} required maxLength={200} />
         </label>
-        <label className="block text-sm font-medium text-foreground">Starting password (at least {MIN_PASSWORD} characters)
+        <label className="block text-sm font-medium text-foreground sm:col-span-2">Starting password (at least {MIN_PASSWORD} characters)
           <input type="password" autoComplete="new-password" className={inputCls} value={password} onChange={e => setPassword(e.target.value)} required minLength={MIN_PASSWORD} />
         </label>
       </div>
 
-      <div className="space-y-2">
-        <p className="text-sm font-medium text-foreground">Access per ledger</p>
-        <AccessEditor books={books} access={access} onChange={setAccess} disabled={busy} />
-      </div>
+      <Toggle label="Super admin"
+        hint="On: has every ledger, loan and page and needs no specific access. Off: a normal admin, who only gets the ledgers, loans and pages you choose below."
+        checked={isSuper} onChange={setIsSuper} disabled={busy} />
 
-      <div className="space-y-2">
-        <p className="text-sm font-medium text-foreground">Loan access</p>
-        <LoanAccessEditor registers={registers} access={loanAccess} onChange={setLoanAccess} disabled={busy} />
-      </div>
+      {!isSuper && (
+        <>
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-foreground">Ledgers this admin can use (and their role in each)</p>
+            <AccessEditor books={books} access={access} onChange={setAccess} disabled={busy} />
+          </div>
 
-      <div className="space-y-2">
-        <label className="flex items-center gap-2 text-sm font-medium text-foreground">
-          <input type="checkbox" checked={limitPages} onChange={e => setLimitPages(e.target.checked)} />
-          Limit which pages this user can open
-        </label>
-        {limitPages && <ResourcePicker value={pages} onChange={setPages} disabled={busy} />}
-      </div>
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-foreground">Loans this admin can use (and their role in each)</p>
+            <LoanAccessEditor registers={registers} access={loanAccess} onChange={setLoanAccess} disabled={busy} />
+          </div>
+
+          <ResourcePicker legend="Pages this admin can open" value={pages} onChange={setPages} disabled={busy}
+            notebookLedgers={books.filter(b => ['editor', 'admin'].includes(access[b.id])).map(b => b.name)} />
+        </>
+      )}
 
       {error && <p role="alert" className="text-sm text-negative">{error}</p>}
       <div className="flex flex-wrap gap-2">
-        <button type="submit" className={btnPrimary} disabled={busy}>{busy ? 'Adding...' : 'Add user'}</button>
+        <button type="submit" className={btnPrimary} disabled={busy}>{busy ? 'Adding...' : 'Add admin'}</button>
         <button type="button" className={btnSecondary} onClick={onCancel} disabled={busy}>Cancel</button>
       </div>
     </form>
+    </Modal>
   );
 }
 
@@ -286,6 +302,7 @@ function UserCard({ account: a, books, registers, isMe, bookName, onChanged, onN
   const [confirmEmail, setConfirmEmail] = useState('');
   const [busy, setBusy] = useState(false);
   const [localError, setLocalError] = useState('');
+  const [typeDialog, setTypeDialog] = useState(false);
 
   const run = async (fn, success) => {
     setBusy(true);
@@ -337,6 +354,11 @@ function UserCard({ account: a, books, registers, isMe, bookName, onChanged, onN
     run(() => api.post(`/admin/accounts/${a.id}/password`, { password }), `Password reset for ${a.email}. Their sessions were signed out.`);
   };
 
+  const changeType = () => run(
+    () => api.put(`/admin/accounts/${a.id}/type`, { isSuperAdmin: !a.isSuperAdmin }),
+    a.isSuperAdmin ? `${a.email} is now a normal admin. Give them their ledgers, loans and pages.` : `${a.email} is now a super admin.`
+  ).finally(() => setTypeDialog(false));
+
   const toggleDisabled = () => run(
     () => api.put(`/admin/accounts/${a.id}/status`, { disabled: !a.disabled }),
     `${a.email} ${a.disabled ? 'enabled' : 'disabled'}.`
@@ -359,16 +381,20 @@ function UserCard({ account: a, books, registers, isMe, bookName, onChanged, onN
           </p>
           <p className="truncate text-sm text-muted-foreground">{a.email}</p>
           <p className="mt-1 flex flex-wrap gap-1 text-xs">
-            {a.isSuperAdmin && <span className="rounded bg-accent px-1.5 py-0.5 text-accent-foreground">Super admin</span>}
+            {a.isSuperAdmin ? <span className="rounded bg-accent px-1.5 py-0.5 text-accent-foreground">Super admin</span> : <span className="rounded bg-muted px-1.5 py-0.5 text-muted-foreground">Admin</span>}
             {a.disabled && <span className="rounded bg-negative/15 px-1.5 py-0.5 text-negative">Disabled</span>}
             {locked && <span className="rounded bg-muted px-1.5 py-0.5 text-muted-foreground">Locked after failed sign-ins</span>}
           </p>
         </div>
       </header>
 
-      {mode !== 'access' && (
+      {a.isSuperAdmin && (
+        <p className="text-sm text-muted-foreground">Everything: every ledger, loan and page, so no specific access is needed. The Notebook only ever shows their own entries.</p>
+      )}
+
+      {!a.isSuperAdmin && mode !== 'access' && (
         <div className="text-sm">
-          <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Ledger access</p>
+          <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Ledgers</p>
           {a.memberships?.length ? (
             <ul className="flex flex-wrap gap-1.5" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
               {a.memberships.map(m => (
@@ -383,7 +409,7 @@ function UserCard({ account: a, books, registers, isMe, bookName, onChanged, onN
         </div>
       )}
 
-      {mode !== 'loans' && (
+      {!a.isSuperAdmin && mode !== 'loans' && (
         <div className="text-sm">
           <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Loans</p>
           {a.loanMemberships?.length ? (
@@ -400,16 +426,17 @@ function UserCard({ account: a, books, registers, isMe, bookName, onChanged, onN
         </div>
       )}
 
-      {mode !== 'pages' && (
+      {!a.isSuperAdmin && mode !== 'pages' && (
         <p className="text-sm">
           <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-muted-foreground">Pages</span>
-          {a.isSuperAdmin || !a.resourcesSet ? 'All pages' : pagesText(a.resources)}
+          {pagesText(a.resources)}
         </p>
       )}
 
       {mode === 'pages' && (
         <div className="space-y-3 rounded-lg bg-muted p-3">
-          <ResourcePicker value={pages} onChange={setPages} disabled={busy} />
+          <ResourcePicker value={pages} onChange={setPages} disabled={busy}
+            notebookLedgers={(a.memberships || []).filter(m => ['editor', 'admin'].includes(m.role)).map(m => bookName(m.bookId))} />
           <div className="flex flex-wrap gap-2">
             <button type="button" className={btnPrimary} disabled={busy} onClick={savePages}>{busy ? 'Saving...' : 'Save pages'}</button>
             {a.resourcesSet && <button type="button" className={btnSecondary} disabled={busy} onClick={allPages}>Allow all pages</button>}
@@ -444,16 +471,17 @@ function UserCard({ account: a, books, registers, isMe, bookName, onChanged, onN
 
       {mode === null && (
         <div className="mt-auto flex flex-wrap gap-2 pt-1">
-          <button type="button" className={btnSecondary} onClick={startAccess}>Edit access</button>
-          <button type="button" className={btnSecondary} onClick={startLoans}>Edit loan access</button>
+          {!a.isSuperAdmin && <button type="button" className={btnSecondary} onClick={startAccess}>Edit ledgers</button>}
+          {!a.isSuperAdmin && <button type="button" className={btnSecondary} onClick={startLoans}>Edit loans</button>}
           {!a.isSuperAdmin && <button type="button" className={btnSecondary} onClick={startPages}>Edit pages</button>}
           <button type="button" className={btnSecondary} onClick={() => { setMode('password'); setLocalError(''); }}>Reset password</button>
+          {!isMe && <button type="button" className={btnSecondary} disabled={busy} onClick={() => setTypeDialog(true)}>{a.isSuperAdmin ? 'Make normal admin' : 'Make super admin'}</button>}
           {!isMe && (
             <button type="button" className={btnSecondary} disabled={busy} onClick={toggleDisabled}>
               {a.disabled ? 'Enable' : 'Disable'}
             </button>
           )}
-          {!isMe && <button type="button" className={btnDanger} onClick={() => { setMode('delete'); setLocalError(''); }}>Delete user</button>}
+          {!isMe && <button type="button" className={btnDanger} onClick={() => { setMode('delete'); setLocalError(''); }}>Delete admin</button>}
         </div>
       )}
 
@@ -477,7 +505,7 @@ function UserCard({ account: a, books, registers, isMe, bookName, onChanged, onN
           <input aria-label="Type the email to confirm" className={inputCls} value={confirmEmail} onChange={e => setConfirmEmail(e.target.value)} />
           <div className="flex gap-2">
             <button type="button" className={btnDanger} disabled={busy || confirmEmail.trim().toLowerCase() !== a.email.toLowerCase()} onClick={remove}>
-              {busy ? 'Deleting...' : 'Delete user'}
+              {busy ? 'Deleting...' : 'Delete admin'}
             </button>
             <button type="button" className={btnSecondary} onClick={() => { setMode(null); setConfirmEmail(''); setLocalError(''); }}>Cancel</button>
           </div>
@@ -485,6 +513,15 @@ function UserCard({ account: a, books, registers, isMe, bookName, onChanged, onN
       )}
 
       {localError && <p role="alert" className="text-sm text-negative">{localError}</p>}
+      {typeDialog && (
+        <ConfirmDialog
+          title={a.isSuperAdmin ? 'Make normal admin?' : 'Make super admin?'}
+          message={a.isSuperAdmin
+            ? `${a.email} will lose access to everything except the ledgers, loans and pages you give them afterwards. They are signed out and must sign in again.`
+            : `${a.email} will get every ledger, loan and page and can manage other admins. They are signed out and must sign in again.`}
+          confirmLabel={a.isSuperAdmin ? 'Make normal admin' : 'Make super admin'}
+          busy={busy} onConfirm={changeType} onCancel={() => setTypeDialog(false)} />
+      )}
     </article>
   );
 }
@@ -496,6 +533,7 @@ function LedgersPanel() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [deleting, setDeleting] = useState(null);
+  const [disabling, setDisabling] = useState(null);
   const reactivate = async () => {
     setBusy(true); setErr('');
     try {
@@ -507,11 +545,24 @@ function LedgersPanel() {
       setBusy(false); setReactivating(null);
     }
   };
+  const disable = async () => {
+    setBusy(true); setErr('');
+    try {
+      await api.put(`/books/${disabling.id}/active`, { active: false });
+      const next = books.find(b => b.id !== disabling.id && b.active !== false);
+      await reloadBooks(next?.id);
+    } catch (ex) {
+      setErr(errorText(ex));
+    } finally {
+      setBusy(false); setDisabling(null);
+    }
+  };
   const removeLedger = async () => {
     setBusy(true); setErr('');
     try {
-      await api.delete(`/books/${deleting.id}`);
-      await reloadBooks();
+      await api.delete(`/books/${deleting.id}`, { params: { confirm: deleting.name } });
+      const next = books.find(b => b.id !== deleting.id && b.active !== false);
+      await reloadBooks(next?.id);
     } catch (ex) {
       setErr(errorText(ex));
     } finally {
@@ -535,6 +586,7 @@ function LedgersPanel() {
                 {b.active === false && <span className="ml-2 rounded bg-muted px-1.5 py-0.5 align-middle text-xs font-normal text-muted-foreground">Inactive</span>}
               </p>
               <p className="truncate text-xs text-muted-foreground">ID {b.id}</p>
+              <Stamp createdAt={b.createdAt} updatedAt={b.updatedAt} className="text-xs text-muted-foreground" />
             </div>
             <p className="text-sm text-muted-foreground">
               Base currency <span className="rounded bg-muted px-1.5 py-0.5 font-semibold text-foreground"><CurrencyLabel code={b.baseCurrency} /></span>
@@ -542,20 +594,32 @@ function LedgersPanel() {
             <div className="mt-auto flex flex-wrap gap-2">
               <button type="button" className={btnSecondary} onClick={() => { selectBook(b.id); window.location.hash = '#/'; }}>Open</button>
               <button type="button" className={btnSecondary} onClick={() => { selectBook(b.id); window.location.hash = '#/settings'; }}>Settings</button>
-              {b.active === false && <button type="button" className={btnSecondary} onClick={() => setReactivating(b)}>Reactivate</button>}
-              {b.active === false && <button type="button" className={btnDanger} onClick={() => setDeleting(b)}>Delete permanently</button>}
+              {b.active === false
+                ? <button type="button" className={btnSecondary} onClick={() => setReactivating(b)}>Enable</button>
+                : <button type="button" className={btnSecondary} onClick={() => setDisabling(b)}>Disable</button>}
+              <button type="button" className={btnDanger} onClick={() => setDeleting(b)}>Delete</button>
             </div>
           </li>
         ))}
       </ul>
 
       {err && <p role="alert" className="rounded-lg bg-muted px-3 py-2 text-sm text-negative">{err}</p>}
-      <p className="text-xs text-muted-foreground">Ledgers can be deactivated in Settings › Ledger and reactivated here by a super administrator. Deactivating hides a ledger; nothing is deleted. An inactive ledger can be reactivated or deleted permanently, but only when it has no entries or documents.</p>
+      <p className="text-xs text-muted-foreground">Disable hides a ledger from the side panel and from its members. Nothing is deleted, and Enable brings it back. Delete removes the ledger for good, with all its entries, documents and settings.</p>
+      {disabling && (
+        <ConfirmDialog
+          title="Disable ledger?"
+          message={`${disabling.name} will disappear from the side panel and from its members. Nothing is deleted: you can enable it again here.`}
+          confirmLabel="Disable"
+          busy={busy}
+          onConfirm={disable}
+          onCancel={() => setDisabling(null)}
+        />
+      )}
       {reactivating && (
         <ConfirmDialog
-          title="Reactivate ledger?"
+          title="Enable ledger?"
           message={`${reactivating.name} will be visible again to its members.`}
-          confirmLabel="Reactivate"
+          confirmLabel="Enable"
           confirmText={reactivating.name}
           busy={busy}
           onConfirm={reactivate}
@@ -564,9 +628,9 @@ function LedgersPanel() {
       )}
       {deleting && (
         <ConfirmDialog
-          title="Delete ledger permanently?"
-          message={`${deleting.name} will be permanently deleted along with its settings and records. This cannot be undone. A ledger that still has entries or documents cannot be deleted: empty it first.`}
-          confirmLabel="Delete permanently"
+          title="Delete ledger?"
+          message={`${deleting.name} will be permanently deleted with all its entries, documents (and their files), projects, funds, people and settings. This cannot be undone. Take a backup first if you may need any of it. To hide it without deleting, use Disable instead.`}
+          confirmLabel="Delete"
           confirmText={deleting.name}
           tone="danger"
           busy={busy}

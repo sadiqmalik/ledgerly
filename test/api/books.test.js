@@ -77,23 +77,18 @@ describe('books and members', () => {
     assert.equal((await admin.put(`/api/books/${BOOK}`).send({ baseCurrency: 'USD', name: 'Same' })).status, 200);
   });
 
-  it('refuses to delete a book with entries or documents, and deletes an empty one', async () => {
+  it('deletes a book with its entries and documents once the name is confirmed', async () => {
     await ctx.api.post('/api/books').send({ name: 'Temp' });
     const member = await make('m@example.com', [{ bookId: 'temp', role: 'editor' }, { bookId: BOOK, role: 'viewer' }]);
     await ctx.d1.batch([
       ctx.d1.prepare("INSERT INTO entries (id, book_id, date, fund_id, direction, amount, currency, created_by, created_at, updated_at) VALUES ('t1','temp','2026-01-01','x','cr',5,'PKR','x','n','n')"),
-      ctx.d1.prepare("INSERT INTO year_closes (book_id, year, closed_at, closed_by) VALUES ('temp', 2020, 'n', 'x')")
+      ctx.d1.prepare("INSERT INTO year_closes (book_id, year, closed_at, closed_by) VALUES ('temp', 2020, 'n', 'x')"),
+      ctx.d1.prepare("INSERT INTO documents (id, book_id, title) VALUES ('d1', 'temp', 'Doc')")
     ]);
-    const active = await ctx.api.delete('/api/books/temp');
-    assert.equal(active.status, 409);
-    assert.equal(active.body.error, 'Deactivate the ledger first, then delete it permanently.');
-    assert.equal((await ctx.api.put('/api/books/temp/active').send({ active: false })).status, 200);
-    assert.equal((await ctx.api.delete('/api/books/temp')).status, 409);
-    await ctx.d1.prepare("DELETE FROM entries WHERE id = 't1'").run();
-    await ctx.d1.prepare("INSERT INTO documents (id, book_id, title) VALUES ('d1', 'temp', 'Doc')").run();
-    assert.equal((await ctx.api.delete('/api/books/temp')).status, 409);
-    await ctx.d1.prepare("DELETE FROM documents WHERE id = 'd1'").run();
-    const res = await ctx.api.delete('/api/books/temp');
+    assert.equal((await member.delete('/api/books/temp?confirm=Temp')).status, 403);
+    assert.equal((await ctx.api.delete('/api/books/temp')).status, 400);
+    assert.equal((await ctx.api.delete('/api/books/temp?confirm=temp')).status, 400);
+    const res = await ctx.api.delete('/api/books/temp?confirm=Temp');
     assert.equal(res.status, 200);
     for (const t of ['funds', 'holders', 'categories', 'parties', 'projects', 'year_closes', 'documents', 'entries']) assert.equal(await count(t, 'temp'), 0, t);
     assert.equal((await ctx.d1.prepare("SELECT COUNT(*) AS n FROM books WHERE id = 'temp'").first()).n, 0);

@@ -59,18 +59,14 @@ describe('deactivating a ledger', () => {
     assert.equal((await ctx.api.put('/api/books/nope/active').send({ active: false })).status, 404);
   });
 
-  it('deletes a book permanently only when deactivated and empty', async () => {
+  it('deletes a book permanently, active or not, once the name is confirmed', async () => {
     await ctx.api.post('/api/books').send({ name: 'Temp' });
-    const del = () => ctx.api.delete('/api/books/temp');
-    const active = await del();
-    assert.equal(active.status, 409);
-    assert.equal(active.body.error, 'Deactivate the ledger first, then delete it permanently.');
-    await ctx.api.put('/api/books/temp/active').send({ active: false });
+    const del = q => ctx.api.delete(`/api/books/temp${q}`);
+    assert.equal((await del('')).status, 400);
     await ctx.d1.prepare("INSERT INTO documents (id, book_id, title) VALUES ('d1', 'temp', 'Doc')").run();
-    assert.equal((await del()).status, 409);
-    await ctx.d1.prepare("DELETE FROM documents WHERE id = 'd1'").run();
-    assert.equal((await del()).status, 200);
+    assert.equal((await del('?confirm=Temp')).status, 200);
     assert.equal((await ctx.d1.prepare("SELECT COUNT(*) AS n FROM books WHERE id = 'temp'").first()).n, 0);
-    assert.equal((await del()).status, 404);
+    assert.equal((await ctx.d1.prepare("SELECT COUNT(*) AS n FROM documents WHERE book_id = 'temp'").first()).n, 0);
+    assert.equal((await del('?confirm=Temp')).status, 404);
   });
 });

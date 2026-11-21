@@ -11,13 +11,15 @@ import { canAdmin } from './shared';
 
 // Create (register null) or edit a register. The currency is locked once entries exist.
 // A loan admin of an existing register also chooses which access codes may view it (view-only).
-export default function RegisterDialog({ register, onClose, onSaved }) {
+export default function RegisterDialog({ register, copyOf, onClose, onSaved }) {
   const locked = Boolean(register && register.totals?.count > 0);
   const names = useLoanNames();
   const { active } = useCurrencies();
+  // A duplicate (copyOf) pre-fills the people, description and currency; it starts with no entries or sharing.
+  const src = register || copyOf;
   const [f, setF] = useState({
-    name: register?.name || '', borrower: register?.borrower || '', lender: register?.lender || '',
-    description: register?.description || '', currency: register?.currency || active[0]?.code || 'USD'
+    name: register ? register.name : copyOf ? `${copyOf.name} (copy)` : '', borrower: src?.borrower || '', lender: src?.lender || '',
+    description: src?.description || '', currency: src?.currency || active[0]?.code || 'USD'
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -63,7 +65,7 @@ export default function RegisterDialog({ register, onClose, onSaved }) {
   };
 
   return (
-    <Modal title={register ? 'Edit loan' : 'New loan'} onClose={onClose}>
+    <Modal title={register ? 'Edit loan' : copyOf ? 'Duplicate loan' : 'New loan'} onClose={onClose}>
       <form onSubmit={submit} className="space-y-3">
         {error && <p role="alert" className="text-sm text-negative">{error}</p>}
         <Field label="Name"><input className={inputCls} value={f.name} onChange={set('name')} required maxLength={120} /></Field>

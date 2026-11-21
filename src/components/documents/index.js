@@ -11,6 +11,10 @@ import EntryPicker, { EntryChips } from './EntryPicker';
 import { errorMessage, findParty, todayISO } from '../common/format';
 import MultiSelect from '../common/MultiSelect';
 import { inputCls, btnPrimary, btnSecondary, btnDanger, Field } from '../settings/ui';
+import usePageName from '../../utils/pageNames';
+import Select from '../common/Select';
+import FilePicker from '../common/FilePicker';
+import Stamp from '../common/Stamp';
 
 const MAX_BYTES = 10 * 1024 * 1024;
 
@@ -32,19 +36,21 @@ const uploadError = err => {
 const asItems = list => list.map(name => ({ id: name.toLowerCase(), name }));
 const distinct = (rows, key) => [...new Map(rows.map(r => r[key]).filter(Boolean).map(v => [v.trim().toLowerCase(), v.trim()])).values()];
 
-function DocForm({ bookId, doc, projects, parties, types, doctors, hospitals, onClose, onSaved }) {
+function DocForm({ bookId, doc, copyOf, projects, parties, types, doctors, hospitals, onClose, onSaved }) {
+  // A duplicate pre-fills everything except the file and receives today's date; Save creates a new record.
+  const src = doc || copyOf;
   const [f, setF] = useState(() => ({
     date: doc?.date || todayISO(),
     receivedOn: doc?.receivedOn || '',
-    title: doc?.title || '',
-    type: doc?.type || '',
-    doctor: doc?.doctor || '',
-    hospital: doc?.hospital || '',
-    projectId: doc?.projectId || '',
-    comment: doc?.comment || ''
+    title: src?.title || '',
+    type: src?.type || '',
+    doctor: src?.doctor || '',
+    hospital: src?.hospital || '',
+    projectId: src?.projectId || '',
+    comment: src?.comment || ''
   }));
-  const [person, setPerson] = useState(doc?.partyName || '');
-  const [entries, setEntries] = useState(() => doc?.entries || []);
+  const [person, setPerson] = useState(src?.partyName || '');
+  const [entries, setEntries] = useState(() => src?.entries || []);
   const [file, setFile] = useState(null);
   // Set once the record is created, so a retry after a failed upload only PUTs (never POSTs a duplicate).
   const [createdId, setCreatedId] = useState(null);
@@ -90,7 +96,7 @@ function DocForm({ bookId, doc, projects, parties, types, doctors, hospitals, on
   };
 
   return (
-    <Modal title={doc || createdId ? 'Edit document' : 'Add document'} onClose={onClose}>
+    <Modal title={doc || createdId ? 'Edit document' : copyOf ? 'Duplicate document' : 'Add document'} onClose={onClose}>
       <form onSubmit={submit} className="space-y-3">
         {error && <p role="alert" className="text-sm text-negative">{error}</p>}
         <div className="grid grid-cols-2 gap-3">
@@ -106,10 +112,10 @@ function DocForm({ bookId, doc, projects, parties, types, doctors, hospitals, on
           <Field label="Hospital"><ComboInput value={f.hospital} onChange={v => setF(s => ({ ...s, hospital: v }))} items={asItems(hospitals)} inputClassName={inputCls} placeholder="Pick or type a name" noun="hospital" /></Field>
         </div>
         <Field label="Project">
-          <select className={inputCls} value={f.projectId} onChange={set('projectId')}>
+          <Select className={inputCls} value={f.projectId} onChange={set('projectId')}>
             <option value="">(none)</option>
             {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
+          </Select>
         </Field>
         <div className="text-sm font-medium text-foreground">
           <label htmlFor="doc-person">Person</label>
@@ -129,8 +135,7 @@ function DocForm({ bookId, doc, projects, parties, types, doctors, hospitals, on
         </div>
         <Field label="Comment"><textarea rows={2} className={inputCls} value={f.comment} onChange={set('comment')} /></Field>
         <Field label={doc?.hasFile ? 'Replace file (PDF or image, max 10 MB)' : 'File (PDF or image, max 10 MB)'}>
-          <input type="file" accept="application/pdf,image/*,.heic" className={inputCls}
-            onChange={e => setFile(e.target.files?.[0] || null)} />
+          <FilePicker file={file} onChange={setFile} accept="application/pdf,image/*,.heic" disabled={busy} hint="PDF or image. Drop a file here or choose one" />
         </Field>
         {doc?.hasFile && !file && <p className="text-xs text-muted-foreground">Current file: {doc.fileName} ({sizeText(doc.fileSize)})</p>}
         <div className="flex flex-wrap items-center gap-2">
@@ -144,6 +149,7 @@ function DocForm({ bookId, doc, projects, parties, types, doctors, hospitals, on
 }
 
 export default function Documents() {
+  const pageName = usePageName();
   const { book, canEdit, parties, can } = useLedger();
   const [rows, setRows] = useState(null);
   const [error, setError] = useState('');
@@ -191,16 +197,10 @@ export default function Documents() {
     ? <a href={fileUrl(d)} target="_blank" rel="noreferrer" className="inline-flex max-w-full items-center gap-1 text-accent underline">
         <span aria-hidden="true">&#128206;</span><span className="truncate">{d.fileName}</span><span className="shrink-0 text-xs text-muted-foreground">({sizeText(d.fileSize)})</span>
       </a> : null;
-  const actions = d => canEdit && (
-    <div className="flex gap-2">
-      <button type="button" className={`${btnSecondary} !px-2 !py-1`} onClick={() => setEditing(d)}>Edit</button>
-      <button type="button" className={`${btnDanger} !px-2 !py-1`} onClick={() => setPendingDelete(d)}>Delete</button>
-    </div>
-  );
 
   return (
     <section className="min-w-0 space-y-4 p-4 sm:p-6">
-      <h2 className="text-xl font-semibold text-foreground">Documents</h2>
+      <h2 className="text-xl font-semibold text-foreground">{pageName('documents')}</h2>
       <div className="grid grid-cols-2 items-end gap-2 md:grid-cols-[repeat(5,minmax(0,1fr))_auto]">
         <Field label="Project"><MultiSelect label="Project" allLabel="All projects" noneLabel="(none)" options={projOpts} value={filt.project} onChange={v => setFilt(s => ({ ...s, project: v }))} /></Field>
         <Field label="Type"><MultiSelect label="Type" allLabel="All types" options={typeOpts} value={filt.type} onChange={v => setFilt(s => ({ ...s, type: v }))} /></Field>
@@ -213,27 +213,26 @@ export default function Documents() {
       {rows && !rows.length && <p className="text-sm text-muted-foreground">No documents.</p>}
 
       {!!rows?.length && (
-        <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card" style={{ listStyle: 'none' }}>
+        <div className="grid items-stretch gap-3 grid-cols-[repeat(auto-fill,minmax(min(100%,20rem),1fr))]">
           {rows.map(d => (
-            <li key={d.id} className="flex min-w-0 flex-col gap-2 px-4 py-3 text-sm hover:bg-muted/40 sm:flex-row sm:items-center sm:gap-4">
-              <div className="w-24 shrink-0 text-xs text-muted-foreground">
-                <div className="whitespace-nowrap text-sm text-foreground">{d.date}</div>
-                {d.receivedOn && <div className="whitespace-nowrap">recv. {d.receivedOn}</div>}
+            <div key={d.id} role={canEdit ? 'button' : undefined} tabIndex={canEdit ? 0 : undefined}
+              onClick={canEdit ? () => setEditing(d) : undefined}
+              onKeyDown={canEdit ? e => { if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) { e.preventDefault(); setEditing(d); } } : undefined}
+              className={`flex h-full min-w-0 flex-col rounded-xl border border-border bg-card p-4 text-sm text-foreground ${canEdit ? 'cursor-pointer hover:bg-muted/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent' : ''}`}>
+              <div className="flex items-start justify-between gap-2">
+                <h2 className="min-w-0 break-words text-lg font-semibold">{d.title}</h2>
+                {d.type && <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{d.type}</span>}
               </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                  <span className="font-medium text-foreground">{d.title}</span>
-                  {d.type && <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{d.type}</span>}
-                </div>
-                <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
-                  {(d.doctor || d.hospital) && <span>{[d.doctor, d.hospital].filter(Boolean).join(' \u00B7 ')}</span>}
-                  {d.partyName && <PartyChip partyId={d.partyId} name={d.partyName} />}
-                  {projLink(d) && <span>{projLink(d)}</span>}
-                  {d.comment && <span className="truncate" title={d.comment}>{d.comment}</span>}
-                </div>
+              <p className="mt-0.5 text-xs text-muted-foreground">{d.date}{d.receivedOn ? ` · received ${d.receivedOn}` : ''}</p>
+              {(d.doctor || d.hospital) && <p className="mt-1 text-sm text-muted-foreground">{[d.doctor, d.hospital].filter(Boolean).join(' \u00B7 ')}</p>}
+              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground" onClick={e => e.stopPropagation()}>
+                {d.partyName && <PartyChip partyId={d.partyId} name={d.partyName} />}
+                {projLink(d) && <span>{projLink(d)}</span>}
               </div>
+              {d.comment && <p className="mt-2 whitespace-pre-wrap break-words text-muted-foreground">{d.comment}</p>}
+              <Stamp createdAt={d.createdAt} updatedAt={d.updatedAt} className="mt-2 text-xs text-muted-foreground" />
               {!!d.entries?.length && (
-                <div className="flex min-w-0 flex-wrap gap-1.5 text-xs sm:max-w-72">
+                <div className="mt-2 flex min-w-0 flex-wrap gap-1.5 text-xs" onClick={e => e.stopPropagation()}>
                   {d.entries.map(e => (
                     <a key={e.id} href={`#/ledger?year=all&from=${e.date}&to=${e.date}`} title="Show in the ledger"
                       className="inline-flex max-w-full items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-muted-foreground hover:underline">
@@ -243,15 +242,22 @@ export default function Documents() {
                   ))}
                 </div>
               )}
-              {fileLink(d) && <div className="min-w-0 text-xs sm:max-w-56">{fileLink(d)}</div>}
-              {actions(d) && <div className="shrink-0">{actions(d)}</div>}
-            </li>
+              <div className="mt-auto flex flex-wrap items-center gap-2 pt-3" onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
+                {fileLink(d) && <div className="min-w-0 max-w-full text-xs">{fileLink(d)}</div>}
+                {canEdit && (
+                  <span className="ml-auto flex items-center gap-2">
+                    <button type="button" className={`${btnSecondary} !px-2 !py-1 text-xs`} onClick={() => setEditing({ copy: d })}>Duplicate</button>
+                    <button type="button" className={`${btnDanger} !px-2 !py-1 text-xs`} onClick={() => setPendingDelete(d)}>Delete</button>
+                  </span>
+                )}
+              </div>
+            </div>
           ))}
-        </ul>
+        </div>
       )}
 
       {editing && (
-        <DocForm bookId={book.id} doc={editing.id ? editing : null} projects={projects} parties={parties} types={types}
+        <DocForm bookId={book.id} doc={editing.id ? editing : null} copyOf={editing.copy} projects={projects} parties={parties} types={types}
           doctors={distinct(every, 'doctor')} hospitals={distinct(every, 'hospital')}
           onClose={() => setEditing(null)}
           onSaved={ok => { setN(x => x + 1); if (ok) setEditing(null); }} />

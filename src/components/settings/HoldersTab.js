@@ -5,6 +5,7 @@ import { useResource } from './ui';
 import Amount from '../common/Amount';
 import CurrencySelect from '../common/CurrencySelect';
 import CurrencyLabel from '../common/CurrencyLabel';
+import Select from '../common/Select';
 
 const KINDS = ['bank', 'cash', 'wallet'];
 
@@ -54,9 +55,9 @@ export default function HoldersTab({ bookId, canEdit }) {
               <input className={inputCls} value={d.name} onChange={e => update({ name: e.target.value })} />
             </Field>
             <Field label="Kind">
-              <select className={inputCls} value={d.kind} onChange={e => update({ kind: e.target.value })}>
+              <Select className={inputCls} value={d.kind} onChange={e => update({ kind: e.target.value })}>
                 {KINDS.map(k => <option key={k} value={k}>{k}</option>)}
-              </select>
+              </Select>
             </Field>
             <Field label="Currency">
               <CurrencySelect className={inputCls} value={d.currency} onChange={currency => update({ currency })} />

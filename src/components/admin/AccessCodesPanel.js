@@ -3,7 +3,8 @@ import dataAPI from '../../services/dataAPI';
 import { useBooks } from '../../hooks/BooksContext';
 import ResourcePicker, { pagesText } from './ResourcePicker';
 import { DEFAULT_CODE_RESOURCES } from '../../auth/resources.mjs';
-import { errorText, inputCls, btnPrimary, btnSecondary, btnDanger, Badge } from '../settings/ui';
+import { errorText, inputCls, btnPrimary, btnSecondary, btnDanger, Badge, ToggleGrid } from '../settings/ui';
+import Modal from '../common/Modal';
 import ConfirmDialog from '../common/ConfirmDialog';
 import PromptDialog from '../common/PromptDialog';
 
@@ -17,7 +18,8 @@ export default function AccessCodesPanel() {
   const [code, setCode] = useState('');
   const [selected, setSelected] = useState([]);
   const [pages, setPages] = useState([...DEFAULT_CODE_RESOURCES]);
-  const [editing, setEditing] = useState(null); // { id, pages }
+  const [editing, setEditing] = useState(null); // { id, name, bookIds, pages }
+  const [creating, setCreating] = useState(false);
   const [created, setCreated] = useState(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -37,7 +39,6 @@ export default function AccessCodesPanel() {
 
   useEffect(() => { load(); }, []);
 
-  const toggle = id => setSelected(sel => (sel.includes(id) ? sel.filter(x => x !== id) : [...sel, id]));
   const bookName = id => books.find(b => b.id === id)?.name || id;
 
   const create = async e => {
@@ -50,6 +51,7 @@ export default function AccessCodesPanel() {
       setCode('');
       setSelected([]);
       setPages([...DEFAULT_CODE_RESOURCES]);
+      setCreating(false);
       load();
     } catch (err) {
       setError(errorText(err));
@@ -77,12 +79,15 @@ export default function AccessCodesPanel() {
 
   const savePages = async () => {
     setError('');
+    setBusy(true);
     try {
       await dataAPI.setAccessCodeResources(editing.id, editing.pages);
       setEditing(null);
       load();
     } catch (err) {
       setError(errorText(err));
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -90,6 +95,16 @@ export default function AccessCodesPanel() {
     try {
       await dataAPI.revokeAccessCode(c.id);
       if (created && created.id === c.id) setCreated(null);
+      load();
+    } catch (err) {
+      setError(errorText(err));
+    }
+  };
+
+  const restore = async c => {
+    setError('');
+    try {
+      await dataAPI.restoreAccessCode(c.id);
       load();
     } catch (err) {
       setError(errorText(err));
@@ -114,8 +129,11 @@ export default function AccessCodesPanel() {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">An access code lets someone view the selected ledgers. It never allows changes.</p>
-      {error && <div className="alert alert-error" role="alert">{error}</div>}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-muted-foreground">An access code is view only: it lets someone read the selected ledgers and pages, and never change anything.</p>
+        <button type="button" className={btnPrimary} onClick={() => { setError(''); setCreating(true); }}>New access code</button>
+      </div>
+      {error && !creating && !editing && <div className="alert alert-error" role="alert">{error}</div>}
       {created && (
         <div className="alert alert-success" role="status">
           Access code for "{created.name}": <strong style={{ fontFamily: 'monospace', userSelect: 'all' }}>{created.code}</strong>
@@ -123,59 +141,69 @@ export default function AccessCodesPanel() {
         </div>
       )}
 
-      <form onSubmit={create} className="space-y-3 rounded-xl border border-border bg-card p-4">
-        <label className="block text-sm font-medium text-foreground">
-          Name
-          <input className={inputCls} value={name} onChange={e => setName(e.target.value)} maxLength={80} required />
-        </label>
-        <label className="block text-sm font-medium text-foreground">
-          Access code (optional)
-          <input className={inputCls} value={code} onChange={e => setCode(e.target.value)} maxLength={64} autoComplete="off" spellCheck={false} placeholder="Leave blank to generate a strong code" />
-          <span className="block text-xs font-normal text-muted-foreground">8-64 characters, case-sensitive, e.g. family-view-2026. Shown once.</span>
-        </label>
-        <fieldset className="space-y-1">
-          <legend className="text-sm font-medium text-foreground">Ledgers (viewer access)</legend>
-          {books.map(b => (
-            <label key={b.id} className="flex items-center gap-2 text-sm text-foreground">
-              <input type="checkbox" checked={selected.includes(b.id)} onChange={() => toggle(b.id)} />
-              {b.name}
-            </label>
-          ))}
-        </fieldset>
-        <ResourcePicker value={pages} onChange={setPages} disabled={busy} />
-        <button type="submit" className={btnPrimary} disabled={busy || !name.trim() || selected.length === 0}>Create access code</button>
-      </form>
-
-      <ul className="space-y-2" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+      <ul className="grid items-start gap-3 grid-cols-[repeat(auto-fill,minmax(min(100%,22rem),1fr))]" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
         {codes.map(c => (
-          <li key={c.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-card p-3">
-            <div className="min-w-0">
-              <p className="truncate font-semibold text-foreground">
-                {c.name} {c.revokedAt ? <Badge>revoked</Badge> : <Badge>active</Badge>}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {c.bookIds.map(bookName).join(', ')} · pages: {pagesText(c.resources || [])} · created {when(c.createdAt)} by {c.createdBy} · last used {when(c.lastUsedAt)}
-              </p>
+          <li key={c.id} className="flex h-full flex-col rounded-xl border border-border bg-card p-4">
+            <p className="flex min-w-0 items-center gap-2 text-lg font-semibold text-foreground">
+              <span className="min-w-0 truncate">{c.name}</span> {c.revokedAt ? <Badge>revoked</Badge> : <Badge>active</Badge>}
+            </p>
+            <dl className="mt-2 space-y-1 text-sm">
+              <div className="flex gap-2"><dt className="w-20 shrink-0 text-muted-foreground">Ledgers</dt><dd className="min-w-0">{c.bookIds.map(bookName).join(', ') || 'None'}</dd></div>
+              <div className="flex gap-2"><dt className="w-20 shrink-0 text-muted-foreground">Pages</dt><dd className="min-w-0">{pagesText(c.resources || [])}</dd></div>
+              <div className="flex gap-2"><dt className="w-20 shrink-0 text-muted-foreground">Created</dt><dd className="min-w-0">{when(c.createdAt)} by {c.createdBy}</dd></div>
+              <div className="flex gap-2"><dt className="w-20 shrink-0 text-muted-foreground">Last used</dt><dd className="min-w-0">{when(c.lastUsedAt)}</dd></div>
+            </dl>
+            <div className="mt-auto flex flex-wrap gap-2 pt-3">
+              {!c.revokedAt && <button type="button" className={btnSecondary} onClick={() => { setError(''); setEditing({ id: c.id, name: c.name, bookIds: c.bookIds, pages: c.resources || [] }); }}>Edit</button>}
+              {!c.revokedAt && <button type="button" className={btnSecondary} onClick={() => reset(c)}>Reset code</button>}
+              {!c.revokedAt && <button type="button" className={btnDanger} onClick={() => revoke(c)}>Revoke</button>}
+              {c.revokedAt && <button type="button" className={btnPrimary} onClick={() => restore(c)}>Restore</button>}
+              <button type="button" className={btnDanger} disabled={deletingId === c.id} onClick={() => setDialog({ kind: 'delete', code: c })}>
+                {deletingId === c.id ? 'Deleting…' : 'Delete'}
+              </button>
             </div>
-            {!c.revokedAt && <button type="button" className={btnSecondary} onClick={() => setEditing({ id: c.id, pages: c.resources || [] })}>Edit pages</button>}
-            {editing?.id === c.id && (
-              <div className="w-full space-y-2 rounded-lg bg-muted p-3">
-                <ResourcePicker value={editing.pages} onChange={next => setEditing({ id: c.id, pages: next })} />
-                <div className="flex gap-2">
-                  <button type="button" className={btnPrimary} onClick={savePages}>Save pages</button>
-                  <button type="button" className={btnSecondary} onClick={() => setEditing(null)}>Cancel</button>
-                </div>
-              </div>
-            )}
-            {!c.revokedAt && <button type="button" className={btnSecondary} onClick={() => reset(c)}>Reset code</button>}
-            {!c.revokedAt && <button type="button" className={btnDanger} onClick={() => revoke(c)}>Revoke</button>}
-            <button type="button" className={btnDanger} disabled={deletingId === c.id} onClick={() => setDialog({ kind: 'delete', code: c })}>
-              {deletingId === c.id ? 'Deleting…' : 'Delete'}
-            </button>
           </li>
         ))}
         {codes.length === 0 && <li className="text-sm text-muted-foreground">No access codes yet.</li>}
       </ul>
+      {creating && (
+        <Modal title="New access code" onClose={() => setCreating(false)} wide>
+          <form onSubmit={create} className="space-y-4">
+            {error && <p role="alert" className="text-sm text-negative">{error}</p>}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block text-sm font-medium text-foreground">
+                Name
+                <input className={inputCls} value={name} onChange={e => setName(e.target.value)} maxLength={80} required autoFocus />
+              </label>
+              <label className="block text-sm font-medium text-foreground">
+                Access code (optional)
+                <input className={inputCls} value={code} onChange={e => setCode(e.target.value)} maxLength={64} autoComplete="off" spellCheck={false} placeholder="Leave blank to generate one" />
+              </label>
+            </div>
+            <p className="-mt-2 text-xs text-muted-foreground">8-64 characters, case-sensitive, for example family-view-2026. It is shown once, after you create it.</p>
+            <ToggleGrid legend="Ledgers (view only)" options={books.map(b => ({ value: b.id, label: b.name }))} value={selected} onChange={setSelected} disabled={busy} />
+            <ResourcePicker forCode value={pages} onChange={setPages} disabled={busy} />
+            <div className="flex flex-wrap gap-2">
+              <button type="submit" className={btnPrimary} disabled={busy || !name.trim() || selected.length === 0}>{busy ? 'Creating...' : 'Create access code'}</button>
+              <button type="button" className={btnSecondary} onClick={() => setCreating(false)} disabled={busy}>Cancel</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+      {editing && (
+        <Modal title="Edit access code" onClose={() => setEditing(null)} wide>
+          <div className="space-y-4">
+            {error && <p role="alert" className="text-sm text-negative">{error}</p>}
+            <p className="text-sm"><span className="font-semibold text-foreground">{editing.name}</span>
+              <span className="text-muted-foreground"> · ledgers: {editing.bookIds.map(bookName).join(', ') || 'None'}</span></p>
+            <ResourcePicker forCode value={editing.pages} onChange={next => setEditing(e => ({ ...e, pages: next }))} disabled={busy} />
+            <div className="flex flex-wrap gap-2">
+              <button type="button" className={btnPrimary} disabled={busy} onClick={savePages}>{busy ? 'Saving...' : 'Save'}</button>
+              <button type="button" className={btnSecondary} disabled={busy} onClick={() => setEditing(null)}>Cancel</button>
+            </div>
+          </div>
+        </Modal>
+      )}
       {dialog?.kind === 'reset' && (
         <PromptDialog
           title="Reset access code"

@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 const { z } = require('zod');
-const { DEFAULT_CODE_RESOURCES, RESOURCES, normalizeResources } = require('./resources');
+const { DEFAULT_CODE_RESOURCES, RESOURCES, normalizeCodeResources: normalizeResources } = require('./resources');
 const { AuthError, ConflictError, NotFoundError, RateLimitedError, ValidationError } = require('../errors');
 
 // Access codes: named, revocable, viewer-only sign-in for chosen books.
@@ -217,6 +217,19 @@ const createAccessCodeService = store => {
       await store.log.insert({
         actor: { id: actor.id, email: actor.email }, action: 'revoke-access-code', target: `code:${code.id}`,
         detail: { name: code.name }, at: now
+      });
+      return toView(await store.accessCodes.findById(code.id));
+    },
+
+    // Brings a revoked code back: the same code works again. Loans shared with it before the revoke are not restored.
+    async restore(actor, id) {
+      const code = await store.accessCodes.findById(id);
+      if (!code) throw new NotFoundError('Access code not found');
+      if (!code.revokedAt) throw new ConflictError('This access code is not revoked');
+      await store.accessCodes.restore(code.id);
+      await store.log.insert({
+        actor: { id: actor.id, email: actor.email }, action: 'restore-access-code', target: `code:${code.id}`,
+        detail: { name: code.name }, at: new Date().toISOString()
       });
       return toView(await store.accessCodes.findById(code.id));
     },

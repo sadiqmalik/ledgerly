@@ -26,6 +26,10 @@ const registerAdminRoutes = (app, { accountAdmin, auth }) => {
     success: true, accessCode: await auth.accessCodes.revoke(account(c), c.req.param('id'))
   }));
 
+  app.post('/api/admin/access-codes/:id/restore', requireSuperAdmin, async c => c.json({
+    success: true, accessCode: await auth.accessCodes.restore(account(c), c.req.param('id'))
+  }));
+
   app.delete('/api/admin/access-codes/:id', requireSuperAdmin, async c => c.json({
     success: true, deleted: await auth.accessCodes.remove(account(c), c.req.param('id'))
   }));
@@ -44,6 +48,10 @@ const registerAdminRoutes = (app, { accountAdmin, auth }) => {
 
   app.put('/api/admin/accounts/:id/resources', requireSuperAdmin, async c => c.json({
     success: true, account: await accountAdmin.setResources(account(c), c.req.param('id'), c.get('body'))
+  }));
+
+  app.put('/api/admin/accounts/:id/type', requireSuperAdmin, async c => c.json({
+    success: true, account: await accountAdmin.setType(account(c), c.req.param('id'), c.get('body'))
   }));
 
   app.put('/api/admin/accounts/:id/status', requireSuperAdmin, async c => c.json({

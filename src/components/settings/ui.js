@@ -81,6 +81,39 @@ export function SideSwitch({ label, hint, offValue, onValue, value, onChange, di
 // Debit | Credit for ledger entry forms: off = debit, on = credit.
 export const dirProps = { label: 'Credit (money in)', hint: 'On: credit, money coming into the fund. Off: debit, money going out of the fund.', offValue: 'dr', onValue: 'cr' };
 
+// A group of on/off switches laid out as tiles that wrap to the width (never one full-width row each).
+// options: [{ value, label, hint? }]; value: the array of switched-on values; onChange gets the new array in option order.
+export function ToggleGrid({ legend, options, value, onChange, disabled, minWidth = 12 }) {
+  const flip = key => onChange(options.map(o => o.value).filter(v => (v === key ? !value.includes(key) : value.includes(v))));
+  return (
+    <fieldset className="m-0 min-w-0 space-y-2 border-0 p-0" disabled={disabled}>
+      {legend && <legend className="mb-1 text-sm font-medium text-foreground">{legend}</legend>}
+      <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${minWidth}rem), 1fr))` }}>
+        {options.map(o => <Toggle key={o.value} label={o.label} hint={o.hint} checked={value.includes(o.value)} onChange={() => flip(o.value)} disabled={disabled} />)}
+      </div>
+    </fieldset>
+  );
+}
+
+// Two switches for a filter with two sides, shown together in one box (for example Credit and Debit). Both on means
+// no filter (value ''). Switching one off leaves only the other side (value = that side), even when it was the only
+// one left on (it then swaps to the other side), so both are never off. Switching one on again shows both.
+export function EitherSwitches({ label, value, onChange, options, labelBelow = false }) {
+  const [[a, aText], [b, bText]] = options;
+  const aOn = value !== b;
+  const bOn = value !== a;
+  return (
+    <div role="group" aria-label={label} className="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground">
+      {!labelBelow && <span>{label}</span>}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-border bg-muted/30 px-3 py-1.5">
+        <Toggle compact label={aText} checked={aOn} onChange={on => onChange(on ? '' : b)} />
+        <Toggle compact label={bText} checked={bOn} onChange={on => onChange(on ? '' : a)} />
+      </div>
+      {labelBelow && <span className="text-center">{label}</span>}
+    </div>
+  );
+}
+
 export function Check({ label, checked, onChange, disabled }) {
   return (
     <label className="flex items-center gap-2 text-sm text-foreground">

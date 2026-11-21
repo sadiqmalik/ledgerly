@@ -3,26 +3,14 @@ import useProjectNames from '../../hooks/useProjectNames';
 import { useLedger } from '../../hooks/LedgerContext';
 import MultiSelect, { useDismiss } from '../common/MultiSelect';
 import PromptDialog from '../common/PromptDialog';
+import { Toggle, EitherSwitches } from '../settings/ui';
 import LockIcon from './LockIcon';
 import { countActive, includePrevious, hasPeriodStart, loadViews, saveViews, serializeFilters } from './filterState';
+import Select from '../common/Select';
 
 const Field = ({ label, children }) => (
   <label className="flex flex-col gap-0.5 text-xs text-muted-foreground min-w-0">{label}{children}</label>
 );
-
-function Segmented({ label, value, onChange, options }) {
-  return (
-    <div className="flex flex-col gap-0.5 text-xs text-muted-foreground min-w-0">
-      <span>{label}</span>
-      <div role="group" aria-label={label} className="flex rounded-md border border-border overflow-hidden">
-        {options.map(([v, text]) => (
-          <button key={v} type="button" aria-pressed={value === v} onClick={() => onChange(v)}
-            className={`flex-1 px-2 py-1.5 text-xs whitespace-nowrap ${value === v ? 'bg-accent text-accent-foreground' : 'bg-background text-foreground hover:bg-muted'}`}>{text}</button>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 function Views({ bookId, filters, onApply }) {
   const [open, setOpen] = useState(false);
@@ -119,9 +107,7 @@ export default function LedgerFilters({ filters, onChange, onClear, onApplyView,
             onClick={e => toggleYear(y, multi || e.ctrlKey || e.metaKey)}>{y}{closedYears.has(Number(y)) && <LockIcon year={y} className="ml-1 align-[-1px] !text-current opacity-70" />}</button>
         ))}
         <button type="button" aria-pressed={!filters.year.length} className={chip(!filters.year.length)} onClick={() => onChange({ year: [] })}>All</button>
-        <label className="flex items-center gap-1 ml-2 text-xs text-muted-foreground" title="Add years instead of replacing (or Ctrl/Cmd-click)">
-          <input type="checkbox" checked={multi} onChange={e => setMulti(e.target.checked)} /> multi
-        </label>
+        <span className="ml-2" title="On: each year you click is added to the selection. Off: a click picks only that year. Ctrl or Cmd-click also adds."><Toggle compact label="Select several years" checked={multi} onChange={setMulti} /></span>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
@@ -130,27 +116,25 @@ export default function LedgerFilters({ filters, onChange, onClear, onApplyView,
         <Field label="People"><MultiSelect label="People" allLabel="All people" noneLabel="(none)" options={partyOpts} value={filters.party} onChange={v => onChange({ party: v })} /></Field>
         <Field label="Project"><MultiSelect label="Project" allLabel="All projects" noneLabel="(none)" options={projOpts} value={filters.project} onChange={v => onChange({ project: v })} /></Field>
         <Field label="Search"><input type="search" value={filters.q} onChange={set('q')} placeholder="Comment or person" /></Field>
-        <Segmented label="Direction" value={filters.direction} onChange={v => onChange({ direction: v })} options={[['', 'All'], ['cr', 'Credit'], ['dr', 'Debit']]} />
+        <EitherSwitches label="Direction" value={filters.direction} onChange={v => onChange({ direction: v })} options={[['cr', 'Credit'], ['dr', 'Debit']]} />
       </div>
 
       {more && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
           <div className="flex flex-col gap-1 min-w-0">
             <Field label="Fund kind"><MultiSelect label="Fund kind" allLabel={filters.fund.length ? 'All kinds' : 'All (memo hidden)'} searchable={false} options={kindOpts} value={filters.kind} onChange={v => onChange({ kind: v })} /></Field>
-            <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <input type="checkbox" checked={filters.kind.includes('memo')} onChange={e => onChange({ kind: toggleMemo(filters.kind, e.target.checked) })} /> Show memo funds
-            </label>
+            <Toggle compact label="Show memo funds" checked={filters.kind.includes('memo')} onChange={on => onChange({ kind: toggleMemo(filters.kind, on) })} />
           </div>
           <Field label="Currency"><MultiSelect label="Currency" allLabel="All currencies" searchable={false} options={curOpts} value={filters.currency} onChange={v => onChange({ currency: v })} /></Field>
           <Field label="Sort">
-            <select value={filters.sort} onChange={set('sort')}>
+            <Select value={filters.sort} onChange={set('sort')}>
               <option value="">Newest first</option><option value="date_asc">Oldest first</option>
               <option value="amount_desc">Largest amount</option><option value="amount_asc">Smallest amount</option>
-            </select>
+            </Select>
           </Field>
-          <Segmented label="Status" value={filters.status} onChange={v => onChange({ status: v })} options={[['', 'All'], ['paid', 'Paid'], ['pending', 'Pending']]} />
-          <Segmented label="Excluded" value={filters.exclude} onChange={v => onChange({ exclude: v })} options={[['', 'All'], ['0', 'Included only'], ['1', 'Excluded only']]} />
-          <Segmented label="Linked" value={filters.linked} onChange={v => onChange({ linked: v })} options={[['', 'All'], ['1', 'Only transfers'], ['0', 'No transfers']]} />
+          <EitherSwitches label="Status" value={filters.status} onChange={v => onChange({ status: v })} options={[['paid', 'Paid'], ['pending', 'Pending']]} />
+          <EitherSwitches label="Counted in totals" value={filters.exclude} onChange={v => onChange({ exclude: v })} options={[['0', 'Counted'], ['1', 'Excluded']]} />
+          <EitherSwitches label="Transfers" value={filters.linked} onChange={v => onChange({ linked: v })} options={[['1', 'Transfers'], ['0', 'Other entries']]} />
           <div className="hidden md:block" />
           <Field label="Min amount"><input inputMode="decimal" value={filters.min} onChange={set('min')} placeholder="0" /></Field>
           <Field label="Max amount"><input inputMode="decimal" value={filters.max} onChange={set('max')} placeholder="any" /></Field>
@@ -164,9 +148,7 @@ export default function LedgerFilters({ filters, onChange, onClear, onApplyView,
           <button type="button" className="btn" aria-expanded={more} onClick={() => setMore(m => !m)}>{more ? 'Fewer filters' : 'More filters'}</button>
           <button type="button" className="btn" onClick={onClear} disabled={!active && filters.year.length === 1 && filters.year[0] === String(new Date().getFullYear())}>Clear all</button>
           <span className="text-xs text-muted-foreground" aria-live="polite">{active ? `${active} active filter${active > 1 ? 's' : ''}` : 'No filters'}</span>
-          <label className={`flex items-center gap-1.5 text-sm ${canPrev ? '' : 'opacity-50'}`}>
-            <input type="checkbox" disabled={!canPrev} checked={canPrev && prevOn} onChange={e => onChange({ prev: e.target.checked ? '1' : '0' })} /> Include previous balance
-          </label>
+          <Toggle compact label="Include previous balance" disabled={!canPrev} checked={canPrev && prevOn} onChange={on => onChange({ prev: on ? '1' : '0' })} />
         </div>
         <Views bookId={book.id} filters={filters} onApply={onApplyView} />
       </div>

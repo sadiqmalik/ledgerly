@@ -18,7 +18,7 @@ const main = async () => {
   }
   if (!validEmail(email)) throw new Error('A valid email address is required');
 
-  const password = await readSecret('New password (min 12 characters, hidden): ');
+  const password = await readSecret('New password (min 6 characters, hidden): ');
   if (password.length < MIN_PASSWORD_LENGTH) {
     throw new Error(`The password has ${password.length} characters; at least ${MIN_PASSWORD_LENGTH} are needed. Nothing was created.`);
   }

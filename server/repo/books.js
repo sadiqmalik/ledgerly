@@ -3,7 +3,7 @@ const crypto = require('crypto');
 const { DEFAULT_CATEGORIES, DEFAULT_FUND, DEFAULT_HOLDER } = require('../domain/defaults');
 
 // Tables that hold a book's rows (entries last: only soft-deleted ones can remain when a delete is allowed).
-const BOOK_TABLES = ['entry_documents', 'entries', 'documents', 'items', 'item_locations', 'year_closes', 'profit_rates', 'book_settings', 'projects', 'parties', 'categories', 'funds', 'holders'];
+const BOOK_TABLES = ['diary_notes', 'diary_categories', 'diary_notebooks', 'entry_documents', 'entries', 'documents', 'items', 'item_locations', 'year_closes', 'profit_rates', 'book_settings', 'projects', 'parties', 'categories', 'funds', 'holders'];
 
 const createBooksRepo = (db, authStore) => {
   const run = (sql, ...p) => db.prepare(sql).bind(...p);
@@ -11,7 +11,7 @@ const createBooksRepo = (db, authStore) => {
 
   return {
     async get(id) {
-      return first('SELECT id, name, base_currency, created_at, active FROM books WHERE id = ?', id);
+      return first('SELECT id, name, base_currency, created_at, updated_at, active FROM books WHERE id = ?', id);
     },
 
     async setActive(id, active) {

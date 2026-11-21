@@ -6,6 +6,7 @@ import { useLedger } from '../../hooks/LedgerContext';
 import useProjectNames from '../../hooks/useProjectNames';
 import dataAPI from '../../services/dataAPI';
 import { inputCls } from '../settings/ui';
+import Select from './Select';
 
 // Action bar for a multi-selection (see hooks/useSelection.js). Hidden when nothing is selected.
 // Each picker opens the shared Modal; server errors show inside that modal. On success the selection is cleared
@@ -99,30 +100,30 @@ export default function BulkBar({ rows, selection, onDone, showProject = false, 
     if (action === 'fund') {
       return (
         <div className="form-group"><label htmlFor="bulk-fund">Move to fund</label>
-          <select id="bulk-fund" className={inputCls} value={value} onChange={e => setValue(e.target.value)} disabled={busy}>
+          <Select id="bulk-fund" className={inputCls} value={value} onChange={e => setValue(e.target.value)} disabled={busy}>
             <option value="">Choose a fund</option>
             {activeFunds.map(f => <option key={f.id} value={f.id}>{f.name} ({f.currency})</option>)}
-          </select></div>
+          </Select></div>
       );
     }
     if (action === 'category') {
       return (
         <div className="form-group"><label htmlFor="bulk-category">Category</label>
-          <select id="bulk-category" className={inputCls} value={value} onChange={e => setValue(e.target.value)} disabled={busy}>
+          <Select id="bulk-category" className={inputCls} value={value} onChange={e => setValue(e.target.value)} disabled={busy}>
             <option value="">Choose a category</option>
             <option value="none">(none)</option>
             {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select></div>
+          </Select></div>
       );
     }
     if (action === 'project') {
       return (
         <div className="form-group"><label htmlFor="bulk-project">Move to project</label>
-          <select id="bulk-project" className={inputCls} value={value} onChange={e => setValue(e.target.value)} disabled={busy}>
+          <Select id="bulk-project" className={inputCls} value={value} onChange={e => setValue(e.target.value)} disabled={busy}>
             <option value="">Choose a project</option>
             <option value="none">(none: remove from its project)</option>
             {projectOptions.map(([id, p]) => <option key={id} value={id}>{p.name}</option>)}
-          </select></div>
+          </Select></div>
       );
     }
     if (action === 'party') {

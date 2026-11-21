@@ -3,7 +3,7 @@ import { api } from '../../services/dataAPI';
 import { useCurrencies } from '../../hooks/CurrencyContext';
 import ConfirmDialog from '../common/ConfirmDialog';
 import Modal from '../common/Modal';
-import { Field, Segmented, errorText, inputCls, btnPrimary, btnSecondary, btnDanger } from '../settings/ui';
+import { Field, Toggle, errorText, inputCls, btnPrimary, btnSecondary, btnDanger } from '../settings/ui';
 
 // Super administrators: the list of currencies the whole app offers. Switching one off hides it from pickers
 // but existing records keep showing it; delete is only possible while nothing uses it.
@@ -28,7 +28,7 @@ function Row({ c, onChanged }) {
       <div className="flex flex-wrap items-center gap-2">
         <span className="rounded-md bg-muted px-2 py-0.5 text-sm font-semibold tracking-wide text-foreground">{c.code}</span>
         <span className="min-w-0 flex-1 truncate text-sm text-foreground">{c.name}</span>
-        <Segmented label={`${c.code} availability`} value={c.active ? 'on' : 'off'} onChange={setActive} options={[['on', 'Active'], ['off', 'Off']]} />
+        <Toggle compact label="Active" checked={c.active} onChange={on => setActive(on ? 'on' : 'off')} disabled={busy} />
       </div>
       <form onSubmit={save} className="mt-2 flex flex-wrap items-end gap-2">
         <label className="min-w-[8rem] flex-1 text-xs text-muted-foreground">Alias (shown instead of {c.code})

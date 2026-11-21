@@ -9,6 +9,7 @@ import MoneyInput from '../common/MoneyInput';
 import { splitNames } from '../common/NamesInput';
 import { notifyLoansChanged, useLoanNames } from './useLoanRegisters';
 import { useCurrencies } from '../../hooks/CurrencyContext';
+import Select from '../common/Select';
 
 
 // Add (entry null) or edit an entry. onDelete (edit only) asks the caller to confirm and delete.
@@ -16,19 +17,21 @@ import { useCurrencies } from '../../hooks/CurrencyContext';
 // With several lenders the lender field already says who is repaid, so the receiver starts empty (use it only when someone else got the money).
 const defaultReceiver = (register, kind, askLender) => (kind === 'returned' ? (askLender ? '' : register.lender) : register.borrower);
 
-export default function EntryDialog({ register, entry, onClose, onSaved, onDelete, receivers = [] }) {
+export default function EntryDialog({ register, entry, copyOf, onClose, onSaved, onDelete, onDuplicate, receivers = [] }) {
   const { label: curLabel } = useCurrencies();
   const names = useLoanNames(receivers);
   const lenders = splitNames(register.lender);
   const askLender = lenders.length > 1;
-  const [touched, setTouched] = useState(Boolean(entry));
+  // A duplicate (copyOf) pre-fills everything from another entry, dated today; Save creates a new entry.
+  const src = entry || copyOf;
+  const [touched, setTouched] = useState(Boolean(src));
   const [f, setF] = useState({
-    kind: entry?.kind || 'taken',
+    kind: src?.kind || 'taken',
     date: entry?.date || todayISO(),
-    amount: entry ? formatMoney(entry.amount) : '',
-    lender: entry?.lender || '',
-    receiver: entry ? (entry.receiver || '') : defaultReceiver(register, 'taken', askLender),
-    comment: entry?.comment || ''
+    amount: src ? formatMoney(src.amount) : '',
+    lender: src?.lender || '',
+    receiver: src ? (src.receiver || '') : defaultReceiver(register, 'taken', askLender),
+    comment: src?.comment || ''
   });
   // A repayment on a loan with several lenders is received by the lender chosen above, so there is no separate receiver.
   const repaidToLender = askLender && f.kind === 'returned';
@@ -53,7 +56,7 @@ export default function EntryDialog({ register, entry, onClose, onSaved, onDelet
   };
 
   return (
-    <Modal title={entry ? 'Edit entry' : 'Add entry'} onClose={onClose}>
+    <Modal title={entry ? 'Edit entry' : copyOf ? 'Duplicate entry' : 'Add entry'} onClose={onClose}>
       <form onSubmit={submit} className="space-y-3">
         {error && <p role="alert" className="text-sm text-negative">{error}</p>}
         <SideSwitch label="Loan returned" hint="On: money paid back, the remaining balance goes down. Off: loan taken, money the borrower received, the remaining balance goes up." offValue="taken" onValue="returned" value={f.kind}
@@ -66,11 +69,11 @@ export default function EntryDialog({ register, entry, onClose, onSaved, onDelet
         </div>
         {askLender && (
           <Field label={f.kind === 'returned' ? 'Lender being repaid (they receive the money)' : 'Lender who gave the money'}>
-            <select className={inputCls} value={f.lender} required={!(entry && !entry.lender)}
+            <Select className={inputCls} value={f.lender} required={!(entry && !entry.lender)}
               onChange={e => setF(s => ({ ...s, lender: e.target.value }))}>
               <option value="">{entry && !entry.lender ? '(not assigned)' : 'Choose a lender'}</option>
               {lenders.map(n => <option key={n} value={n}>{n}</option>)}
-            </select>
+            </Select>
           </Field>
         )}
         {!repaidToLender && (
@@ -82,6 +85,7 @@ export default function EntryDialog({ register, entry, onClose, onSaved, onDelet
         <div className="flex flex-wrap gap-2">
           <button type="submit" className={btnPrimary} disabled={busy}>{busy ? 'Saving...' : 'Save'}</button>
           <button type="button" className={btnSecondary} onClick={onClose} disabled={busy}>Cancel</button>
+          {entry && onDuplicate && <button type="button" className={btnSecondary} onClick={() => onDuplicate(entry)} disabled={busy}>Duplicate</button>}
           {entry && onDelete && <button type="button" className={`${btnDanger} sm:ml-auto`} onClick={onDelete} disabled={busy}>Delete</button>}
         </div>
       </form>

@@ -191,7 +191,7 @@ Run these from a Mac terminal, in the project folder. Section 3 must be done fir
 
    Expect: the live address printed.
 
-9. Create the first administrator on the live database. Type `live` when asked. The password is typed hidden at the prompt (at least 12 characters), never as an argument:
+9. Create the first administrator on the live database. Type `live` when asked. The password is typed hidden at the prompt (at least 6 characters), never as an argument:
 
    ```bash
    warden account-create -- --remote --email you@example.com --name "Your Name"

@@ -1,7 +1,7 @@
 const { AuthError, RateLimitedError, ValidationError } = require('../errors');
 const password = require('./password');
 
-const MIN_PASSWORD_LENGTH = 12;
+const MIN_PASSWORD_LENGTH = 6;
 const LOCK_AFTER_FAILURES = 5;
 const LOCK_MINUTES = 15;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

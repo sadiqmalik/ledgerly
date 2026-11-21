@@ -7,19 +7,22 @@ import MoneyInput from '../common/MoneyInput';
 import { Field, Check, inputCls, btnPrimary, btnSecondary } from '../settings/ui';
 import ComboInput from '../common/ComboInput';
 import { KINDS, metaPrefill } from './shared';
+import Select from '../common/Select';
 
 // Create (project == null) or edit a project.
-export default function ProjectForm({ bookId, project, funds, kinds = [], onClose, onSaved }) {
+export default function ProjectForm({ bookId, project, copyOf, funds, kinds = [], onClose, onSaved }) {
   const editing = !!project;
-  const kindItems = useMemo(() => [...new Set([...KINDS, ...kinds, project?.kind].filter(Boolean))].map(k => ({ id: k, name: k })), [kinds, project]);
+  // A duplicate (copyOf) pre-fills everything from another project (the name gets "(copy)"); it starts with no entries.
+  const src = project || copyOf;
+  const kindItems = useMemo(() => [...new Set([...KINDS, ...kinds, src?.kind].filter(Boolean))].map(k => ({ id: k, name: k })), [kinds, project]);
   const [f, setF] = useState(() => ({
-    name: project?.name || '',
-    kind: project?.kind || 'trip',
-    fundId: project?.fundId || '',
-    startsOn: project?.startsOn || '',
-    endsOn: project?.endsOn || '',
-    budget: project?.budget ? formatMoney(project.budget).replace(/,/g, '') : '',
-    metaSchema: project?.metaSchema?.length ? project.metaSchema : metaPrefill('trip'),
+    name: project ? project.name : copyOf ? `${copyOf.name} (copy)` : '',
+    kind: src?.kind || 'trip',
+    fundId: src?.fundId || '',
+    startsOn: src?.startsOn || '',
+    endsOn: src?.endsOn || '',
+    budget: src?.budget ? formatMoney(src.budget).replace(/,/g, '') : '',
+    metaSchema: src?.metaSchema?.length ? src.metaSchema : metaPrefill('trip'),
   }));
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
@@ -53,14 +56,15 @@ export default function ProjectForm({ bookId, project, funds, kinds = [], onClos
     };
     setBusy(true); setErr('');
     try {
+      let created;
       if (editing) await api.put(`/books/${bookId}/projects/${project.id}`, { ...body, ...(fundChanged && moveEntries ? { moveEntries: true } : {}) });
-      else await api.post(`/books/${bookId}/projects`, body);
-      onSaved();
+      if (!editing) created = (await api.post(`/books/${bookId}/projects`, body)).data;
+      onSaved(created);
     } catch (ex) { setErr(errorMessage(ex)); setBusy(false); }
   };
 
   return (
-    <Modal title={editing ? 'Edit project' : 'New project'} onClose={onClose}>
+    <Modal title={editing ? 'Edit project' : copyOf ? 'Duplicate project' : 'New project'} onClose={onClose}>
       <form onSubmit={submit} className="space-y-3">
         <Field label="Name"><input className={inputCls} value={f.name} onChange={e => set('name', e.target.value)} autoFocus /></Field>
         <div className="grid grid-cols-2 gap-3">
@@ -68,10 +72,10 @@ export default function ProjectForm({ bookId, project, funds, kinds = [], onClos
             <ComboInput value={f.kind} onChange={changeKind} items={kindItems} placeholder="Trip, medical, ..." noun="kind" />
           </Field>
           <Field label="Fund">
-            <select className={inputCls} value={f.fundId} onChange={e => set('fundId', e.target.value)}>
+            <Select className={inputCls} value={f.fundId} onChange={e => set('fundId', e.target.value)}>
               <option value="">Choose...</option>
               {funds.filter(x => !x.archived).map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
-            </select>
+            </Select>
           </Field>
           <Field label="Starts"><input type="date" min="1900-01-01" max="9999-12-31" className={inputCls} value={f.startsOn} onChange={e => set('startsOn', e.target.value)} /></Field>
           <Field label="Ends"><input type="date" min="1900-01-01" max="9999-12-31" className={inputCls} value={f.endsOn} onChange={e => set('endsOn', e.target.value)} /></Field>

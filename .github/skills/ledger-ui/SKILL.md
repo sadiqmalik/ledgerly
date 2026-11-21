@@ -7,7 +7,7 @@ Paths are relative to the project root. Look at the nearest existing component f
 
 ## Shell and navigation
 
-- `src/layout/AppShell.js` is the sidebar: grouped nav with icons (`NAV_GROUPS`), collapse button on desktop, a sheet on phones, the ledger list with the active book highlighted, a top bar with page title, book name, base currency, theme toggle and account menu. A super-admin-only `ADMIN_GROUP` adds Users & ledgers.
+- `src/layout/AppShell.js` is the sidebar: grouped nav with icons (`NAV_GROUPS`), collapse button on desktop, a sheet on phones, the ledger list with the active book highlighted, a top bar with page title, book name, base currency, theme toggle and account menu. A super-admin-only `ADMIN_GROUP` adds Administration.
 - Routing is hash based (`useHashRoute`, `#/ledger`). A new page needs: a nav item in `NAV_GROUPS` (path, label, icon path in `ICON_PATHS`), a branch in `Screens` in `src/App.js`, and a permission resource (below).
 - Pages use the full window width. Do not add a `max-w-*` page container; cap only inner text blocks.
 

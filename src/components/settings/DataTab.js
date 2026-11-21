@@ -4,6 +4,7 @@ import { useLedger } from '../../hooks/LedgerContext';
 import { errorMessage } from '../common/format';
 import { inputCls, btnSecondary } from './ui';
 import { quantityPriceFromEntry } from '../../utils/entryQuantityPrice.mjs';
+import Select from '../common/Select';
 
 function saveBlob(blob, name) {
   const url = URL.createObjectURL(blob);
@@ -109,10 +110,10 @@ export default function DataTab() {
       <div className="space-y-2 rounded-xl border border-border bg-card p-4">
         <h3 className="font-medium text-foreground">Entries (CSV)</h3>
         <div className="flex flex-wrap items-center gap-2">
-          <select aria-label="Year" className={`${inputCls} !mt-0 !w-auto`} value={year} onChange={e => setYear(e.target.value)}>
+          <Select aria-label="Year" className={`${inputCls} !mt-0 !w-auto`} value={year} onChange={e => setYear(e.target.value)}>
             <option value="">All years</option>
             {years.map(y => <option key={y} value={y}>{y}</option>)}
-          </select>
+          </Select>
           <button type="button" className={btnSecondary} disabled={Boolean(busy)} onClick={csv}>{busy === 'csv' ? 'Preparing...' : 'Download CSV'}</button>
         </div>
       </div>

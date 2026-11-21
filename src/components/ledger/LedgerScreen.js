@@ -3,7 +3,7 @@ import dataAPI, { api } from '../../services/dataAPI';
 import useDebounced from '../../hooks/useDebounced';
 import useHashQuery from '../../hooks/useHashQuery';
 import { useLedger } from '../../hooks/LedgerContext';
-import { errorMessage } from '../common/format';
+import { errorMessage, todayISO } from '../common/format';
 import EntryTable from './EntryTable';
 import BulkBar from '../common/BulkBar';
 import { useSelection } from '../../hooks/useSelection';
@@ -12,6 +12,7 @@ import LedgerFilters from './LedgerFilters';
 import TotalsBar from './TotalsBar';
 import { parseFilters, serializeFilters, toParams, openingCaption, countActive } from './filterState';
 import { ProfitDialog } from '../../optionalModules';
+import usePageName from '../../utils/pageNames';
 
 const PAGE_SIZE = 100;
 
@@ -30,6 +31,7 @@ function periodCaption(f) {
 }
 
 export default function LedgerScreen() {
+  const pageName = usePageName();
   const { book, canEdit, canQuickAdd, version, notifyChanged, openQuickAdd, openProfit, isClosedDate } = useLedger();
   const [query, setQuery] = useHashQuery();
   const filters = useMemo(() => parseFilters(query), [query]);
@@ -38,6 +40,7 @@ export default function LedgerScreen() {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [selected, setSelected] = useState(null);
+  const [draft, setDraft] = useState(null);
   const canSelect = e => !e.linkId && !isClosedDate(e.date);
   const selection = useSelection(data?.rows || [], canSelect);
 
@@ -97,7 +100,7 @@ export default function LedgerScreen() {
   return (
     <section aria-label="Ledger" className="pb-20 xl:pb-0">
       <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-        <h2 className="text-lg font-semibold">Ledger</h2>
+        <h2 className="text-lg font-semibold">{pageName('ledger')}</h2>
         {canQuickAdd && <div className="flex gap-2">{ProfitDialog && <button type="button" className="btn" onClick={openProfit}>Profit entry</button>}<button type="button" className="btn btn-primary" onClick={() => openQuickAdd()}>Add entry <span className="opacity-70 text-xs">(n)</span></button></div>}
       </div>
 
@@ -136,9 +139,13 @@ export default function LedgerScreen() {
         )}
       </div>
 
+      {draft && canEdit && (
+        <EntryPanel entry={draft} onClose={() => setDraft(null)} onChanged={() => { setDraft(null); notifyChanged(); }} />
+      )}
       {selected && canEdit && (
         <EntryPanel entry={selected} onClose={() => setSelected(null)}
-          onChanged={() => { setSelected(null); notifyChanged(); }} onLinksChanged={notifyChanged} />
+          onChanged={() => { setSelected(null); notifyChanged(); }} onLinksChanged={notifyChanged}
+          onDuplicate={e => { setSelected(null); setDraft({ ...e, id: null, linkId: null, date: todayISO(), docCount: 0 }); }} />
       )}
     </section>
   );
