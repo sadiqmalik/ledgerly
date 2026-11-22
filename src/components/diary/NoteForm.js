@@ -3,6 +3,7 @@ import { api } from '../../services/dataAPI';
 import Modal from '../common/Modal';
 import ComboInput from '../common/ComboInput';
 import { errorMessage, todayISO } from '../common/format';
+import { RichTextEditor } from './RichText';
 import { inputCls, btnPrimary, btnSecondary, Field, Toggle } from '../settings/ui';
 import { asItems } from './shared';
 import Select from '../common/Select';
@@ -71,7 +72,7 @@ export default function NoteForm({ base, note, copyOf, preset, projects, categor
         </Field>
         <Field label="Date"><input type="date" min="1900-01-01" max="9999-12-31" required className={inputCls} value={f.date} onChange={set('date')} /></Field>
         <Field label={isDate ? 'What is the date for?' : 'Title'}><input className={inputCls} value={f.title} onChange={set('title')} required maxLength={200} placeholder={isDate ? 'Anniversary, first cleaning, bought the car' : 'What is this about?'} /></Field>
-        <Field label={isDate ? 'Small note' : 'Message'}><textarea rows={isDate ? 3 : 5} className={inputCls} value={f.message} onChange={set('message')} maxLength={8000} placeholder={isDate ? 'Anything worth remembering about it' : 'The note, thought or message to remember'} /></Field>
+        <Field label={isDate ? 'Small note' : 'Message'}><RichTextEditor rows={isDate ? 3 : 5} value={f.message} onChange={v => setF(s => ({ ...s, message: v }))} placeholder={isDate ? 'Anything worth remembering about it' : 'The note, thought or message to remember'} /></Field>
  
         {isDate && (
           <Toggle label="Repeats every year" checked={f.repeatYearly} onChange={() => setF(s => ({ ...s, repeatYearly: !s.repeatYearly }))} disabled={busy}

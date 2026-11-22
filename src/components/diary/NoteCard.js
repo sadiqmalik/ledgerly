@@ -1,5 +1,6 @@
 import React from 'react';
 import { btnSecondary, btnDanger } from '../settings/ui';
+import { RichText } from './RichText';
 import { pill, CalendarIcon, stampText } from './shared';
 
 // One entry as a boxed card (the same style as the loan and project cards). The card opens the editor.
@@ -26,7 +27,7 @@ export default function NoteCard({ note: n, canEdit, onEdit, onDuplicate, onTogg
           {n.toName && <>For <span className="font-medium text-foreground">{n.toName}</span></>}
         </p>
       )}
-      {n.message && <p className="mt-2 whitespace-pre-wrap break-words text-sm">{n.message}</p>}
+      {n.message && <RichText text={n.message} className="mt-2 text-sm" />}
       <p className="mt-auto pt-2 text-xs text-muted-foreground">{stampText(n.createdAt, n.updatedAt)}</p>
       <div className="flex flex-wrap items-center gap-2 pt-2">
         {!hideCategory && n.categoryName && <a href={`#/diary/${n.notebookId}/${n.categoryId}`} onClick={e => e.stopPropagation()} className={`${pill} hover:underline`} title="Open the category">{n.categoryName}</a>}

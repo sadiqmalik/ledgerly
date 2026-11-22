@@ -5,6 +5,7 @@ import { useBooks } from '../../hooks/BooksContext';
 import ConfirmDialog from '../common/ConfirmDialog';
 import Modal from '../common/Modal';
 import NewLedgerModal from '../NewLedgerModal';
+import { Details, Members } from '../settings/LedgerTab';
 import AccessCodesPanel from './AccessCodesPanel';
 import CurrenciesPanel from './CurrenciesPanel';
 import ResourcePicker, { pagesText } from './ResourcePicker';
@@ -533,6 +534,8 @@ function LedgersPanel() {
   const [err, setErr] = useState('');
   const [deleting, setDeleting] = useState(null);
   const [disabling, setDisabling] = useState(null);
+  const [editing, setEditing] = useState(null);
+  const { account: me } = useAuth();
   const reactivate = async () => {
     setBusy(true); setErr('');
     try {
@@ -592,7 +595,7 @@ function LedgersPanel() {
             </p>
             <div className="mt-auto flex flex-wrap gap-2">
               <button type="button" className={btnSecondary} onClick={() => { selectBook(b.id); window.location.hash = '#/'; }}>Open</button>
-              <button type="button" className={btnSecondary} onClick={() => { selectBook(b.id); window.location.hash = '#/settings?tab=details'; }}>Edit details</button>
+              <button type="button" className={btnSecondary} onClick={() => setEditing(b)}>Edit</button>
               {b.active === false
                 ? <button type="button" className={btnSecondary} onClick={() => setReactivating(b)}>Enable</button>
                 : <button type="button" className={btnSecondary} onClick={() => setDisabling(b)}>Disable</button>}
@@ -603,6 +606,14 @@ function LedgersPanel() {
       </ul>
 
       {err && <p role="alert" className="rounded-lg bg-muted px-3 py-2 text-sm text-negative">{err}</p>}
+      {editing && books.find(b => b.id === editing.id) && (
+        <Modal title={`Edit ledger: ${books.find(b => b.id === editing.id).name}`} onClose={() => setEditing(null)} wide>
+          <div className="space-y-4">
+            <Details key={editing.id} book={books.find(b => b.id === editing.id)} reloadBooks={reloadBooks} />
+            <Members bookId={editing.id} selfId={me?.id} />
+          </div>
+        </Modal>
+      )}
       <p className="text-xs text-muted-foreground">Disable hides a ledger from the side panel and from its members. Nothing is deleted, and Enable brings it back. Delete removes the ledger for good, with all its entries, documents and settings.</p>
       {disabling && (
         <ConfirmDialog

@@ -5,6 +5,7 @@ import usePageName from '../../utils/pageNames';
 import Stamp from '../common/Stamp';
 import { errorMessage } from '../common/format';
 import { btnPrimary } from '../settings/ui';
+import { useBooks } from '../../hooks/BooksContext';
 import NotebookForm from './NotebookForm';
 import NotebookPage from './NotebookPage';
 import { pill } from './shared';
@@ -22,6 +23,9 @@ export default function Notebooks() {
   const [creating, setCreating] = useState(false);
   const [n, setN] = useState(0);
   const reload = useCallback(() => setN(x => x + 1), []);
+  const { book } = useBooks();
+  // The open ledger's notebooks plus private ones (linked to no ledger); a notebook of another ledger is not listed here.
+  const mine = (list || []).filter(nb => !nb.bookId || nb.bookId === book?.id);
 
   useEffect(() => {
     let off = false;
@@ -52,10 +56,10 @@ export default function Notebooks() {
         <button type="button" className={btnPrimary} onClick={() => setCreating(true)}>New notebook</button>
       </div>
       {error && <p role="alert" className="text-sm text-negative">{error}</p>}
-      {list && !list.length && !error && <p className="text-sm text-muted-foreground">No notebooks yet. Use New notebook to create one.</p>}
-      {!!list?.length && (
+      {list && !mine.length && !error && <p className="text-sm text-muted-foreground">No notebooks yet. Use New notebook to create one.</p>}
+      {!!mine.length && (
         <div className="grid items-stretch gap-3 grid-cols-[repeat(auto-fill,minmax(min(100%,18rem),1fr))]">
-          {list.map(nb => (
+          {mine.map(nb => (
             <a key={nb.id} href={`#/diary/${nb.id}`} className="flex h-full flex-col rounded-xl border border-border bg-card p-4 no-underline text-foreground hover:bg-muted/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
               <div className="flex items-start justify-between gap-2">
                 <h2 className="min-w-0 truncate text-lg font-semibold">{nb.name}</h2>

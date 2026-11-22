@@ -517,6 +517,10 @@ The entry panel opens only for editors, and only for entries in a year that is s
 2. **Categories** inside a notebook: a person or topic such as "Family" or "Car".
 3. **Entries** inside a category: notes and important dates.
 
+**Formatting a note.** The message box has a small bar: **B** bold, *I* italic, ~~S~~ strikethrough and a bullet list (also Ctrl or Cmd with B and I). Select text and press a button, or press it again to take the formatting off. It is stored as plain text (`**bold**`, `*italic*`, `~~strike~~`, `- ` for bullets) and shown formatted on the card; older notes are unchanged.
+
+The Notebook page lists the open ledger's notebooks plus your private ones (linked to no ledger). A notebook linked to another ledger appears only when you switch to that ledger. **New notebook** starts linked to the open ledger.
+
 **Who can open a notebook.**
 
 - **Linked to a ledger**: it follows that ledger's access. A super admin, or an admin who has the Notebook page switched on and a role in that ledger, can open it. A **Viewer** only reads it (view only), an **Editor or Admin** can change it. Several notebooks can be linked to the same ledger.
@@ -773,7 +777,7 @@ Then add your own funds and accounts in Settings.
 
 ### Deactivating, reactivating and deleting a ledger
 
-Administration › All ledgers shows every ledger as a card with **Open**, **Edit details** (name and base currency, in Settings › Details), **Disable** (or **Enable** when it is off) and **Delete**.
+Administration › All ledgers shows every ledger as a card with **Open**, **Edit** (a dialog on the same page: name, base currency and the ledger's members), **Disable** (or **Enable** when it is off) and **Delete**.
 
 1. **Deactivate** (an admin, from **Settings › Details**). Press **Deactivate ledger**, type the ledger's name and confirm. The ledger disappears for everyone, including its members. Nothing is deleted.
 2. **Enable** (a super administrator only; the Settings box calls it Reactivate). The deactivated ledger stays visible to super administrators, marked **Inactive**. Open **Settings › Details** (it shows "Ledger is inactive" and a **Reactivate** button) or **Administration › All ledgers**. Type the name and confirm. Everything comes back as it was.

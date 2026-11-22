@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { clearDefaultApplied } from '../utils/defaultLedger';
 import dataAPI from '../services/dataAPI';
 
 const AuthContext = createContext(null);
@@ -85,6 +86,7 @@ export function AuthProvider({ children }) {
     // Returns false (and stays signed in) when the server could not be reached.
     try {
       await dataAPI.logout();
+      clearDefaultApplied();
     } catch (err) {
       if (err?.response?.status !== 401) return false; // 401 means the session is already gone
     }

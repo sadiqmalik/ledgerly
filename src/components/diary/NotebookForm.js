@@ -13,10 +13,10 @@ import { inputCls, btnPrimary, btnSecondary, btnDanger, Field } from '../setting
 // you (super administrators only).
 export default function NotebookForm({ notebook, onClose, onSaved, onDeleted }) {
   const { account } = useAuth();
-  const { books } = useBooks();
+  const { books, book: openBook } = useBooks();
   const isSuper = Boolean(account?.isSuperAdmin);
   const choices = books.filter(b => b.active !== false && (isSuper || ['editor', 'admin'].includes(b.role)));
-  const [f, setF] = useState({ name: notebook?.name || '', description: notebook?.description || '', bookId: notebook ? (notebook.bookId || '') : (isSuper ? '' : (choices[0]?.id || '')) });
+  const [f, setF] = useState({ name: notebook?.name || '', description: notebook?.description || '', bookId: notebook ? (notebook.bookId || '') : (choices.find(b => b.id === openBook?.id)?.id || (isSuper ? '' : (choices[0]?.id || ''))) });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [confirm, setConfirm] = useState(false);

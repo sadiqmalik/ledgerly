@@ -5,14 +5,15 @@ import { useBooks } from '../../hooks/BooksContext';
 import CurrencySelect from '../common/CurrencySelect';
 import ConfirmDialog from '../common/ConfirmDialog';
 import { errorMessage } from '../common/format';
-import { useResource, Field, inputCls, btnPrimary, btnDanger, btnSecondary } from './ui';
+import { useResource, Field, inputCls, btnPrimary, btnDanger, btnSecondary, Toggle } from './ui';
+import { getDefaultLedger, setDefaultLedger } from '../../utils/defaultLedger';
 import CurrencyLabel from '../common/CurrencyLabel';
 import Select from '../common/Select';
 
 // Compact danger button for the small cards in the Members grid.
 const btnSmDanger = 'rounded-md border border-negative px-2 py-1 text-xs font-medium text-negative hover:bg-muted disabled:opacity-50';
 
-function Details({ book, reloadBooks }) {
+export function Details({ book, reloadBooks }) {
   const [name, setName] = useState(book.name);
   const [currency, setCurrency] = useState(book.baseCurrency);
   const [msg, setMsg] = useState('');
@@ -48,7 +49,7 @@ function Details({ book, reloadBooks }) {
   );
 }
 
-function Members({ bookId, selfId }) {
+export function Members({ bookId, selfId }) {
   const { data, error, loading, reload } = useResource(`/books/${bookId}/members`);
   const [email, setEmail] = useState('');
   const [role, setRole] = useState('viewer');
@@ -197,14 +198,24 @@ function ReadOnlyDetails({ book }) {
   );
 }
 
+// Personal choice: open this ledger first when I sign in (this browser).
+function DefaultLedger({ bookId }) {
+  const { account } = useAuth();
+  const id = String(account?.id || '');
+  const [isDefault, setIsDefault] = useState(() => getDefaultLedger(id) === bookId);
+  if (!id) return null;
+  return <Toggle label="Open this ledger when I sign in" hint="Personal, kept in this browser. Turn it on in another ledger to change it." checked={isDefault} onChange={on => { setDefaultLedger(id, on ? bookId : null); setIsDefault(on); }} />;
+}
+
 // Settings > Details: this ledger's name, base currency and the deactivate switch.
 export function DetailsTab({ bookId, canEdit }) {
   const { books, reloadBooks } = useBooks();
   const book = books.find(b => b.id === bookId);
   if (!book) return null;
-  if (!canEdit) return <div className="max-w-xl"><ReadOnlyDetails book={book} /></div>;
+  if (!canEdit) return <div className="max-w-xl space-y-4"><ReadOnlyDetails book={book} /><DefaultLedger key={book.id} bookId={book.id} /></div>;
   return (
     <div className="grid w-full grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,28rem)_minmax(0,28rem)]">
+      <div className="lg:col-span-2 max-w-md"><DefaultLedger key={book.id} bookId={book.id} /></div>
       <Details key={`${book.id}:${book.name}:${book.baseCurrency}`} book={book} reloadBooks={reloadBooks} />
       <DeactivateLedger key={book.id} book={book} books={books} reloadBooks={reloadBooks} />
     </div>

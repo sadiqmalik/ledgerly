@@ -18,6 +18,7 @@ import { LedgerProvider, useLedger } from './hooks/LedgerContext';
 import useHashRoute from './hooks/useHashRoute';
 import { BooksContext } from './hooks/BooksContext';
 import { readLocal, writeLocal } from './components/common/format';
+import { takeDefaultLedger } from './utils/defaultLedger';
 import AppearanceSync from './components/common/AppearanceSync';
 
 const BOOK_KEY = 'ledger.book';
@@ -91,7 +92,7 @@ function App() {
     }
   }, []);
 
-  useEffect(() => { reloadBooks(); }, [reloadBooks]);
+  useEffect(() => { reloadBooks(account?.id ? takeDefaultLedger(String(account.id)) || undefined : undefined); }, [reloadBooks]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { if (bookId) writeLocal(BOOK_KEY, bookId); }, [bookId]);
 
