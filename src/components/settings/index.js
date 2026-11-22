@@ -36,7 +36,7 @@ const TABS = [
 export default function Settings({ book, role }) {
   const [tabKey, setTabKey] = useState(() => {
     const t = new URLSearchParams(window.location.hash.split('?')[1] || '').get('tab');
-    return TABS.some(x => x.key === t) ? t : 'funds';
+    return TABS.some(x => x.key === t) ? t : 'details';
   });
   if (!book) return null;
 
