@@ -5,7 +5,7 @@ import { useBooks } from '../../hooks/BooksContext';
 import ConfirmDialog from '../common/ConfirmDialog';
 import Modal from '../common/Modal';
 import NewLedgerModal from '../NewLedgerModal';
-import { Details, Members } from '../settings/LedgerTab';
+import { Details, Members, DefaultLedger } from '../settings/LedgerTab';
 import AccessCodesPanel from './AccessCodesPanel';
 import CurrenciesPanel from './CurrenciesPanel';
 import ResourcePicker, { pagesText } from './ResourcePicker';
@@ -607,9 +607,10 @@ function LedgersPanel() {
 
       {err && <p role="alert" className="rounded-lg bg-muted px-3 py-2 text-sm text-negative">{err}</p>}
       {editing && books.find(b => b.id === editing.id) && (
-        <Modal title={`Edit ledger: ${books.find(b => b.id === editing.id).name}`} onClose={() => setEditing(null)} wide>
-          <div className="space-y-4">
+        <Modal title={`Edit ledger: ${books.find(b => b.id === editing.id).name}`} onClose={() => setEditing(null)}>
+          <div className="space-y-3">
             <Details key={editing.id} book={books.find(b => b.id === editing.id)} reloadBooks={reloadBooks} />
+            <DefaultLedger key={`d${editing.id}`} bookId={editing.id} />
             <Members bookId={editing.id} selfId={me?.id} />
           </div>
         </Modal>

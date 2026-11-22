@@ -199,7 +199,7 @@ function ReadOnlyDetails({ book }) {
 }
 
 // Personal choice: open this ledger first when I sign in (this browser).
-function DefaultLedger({ bookId }) {
+export function DefaultLedger({ bookId }) {
   const { account } = useAuth();
   const id = String(account?.id || '');
   const [isDefault, setIsDefault] = useState(() => getDefaultLedger(id) === bookId);
