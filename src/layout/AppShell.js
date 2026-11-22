@@ -10,6 +10,7 @@ import { setTheme } from '../theme';
 import { hasResource, routeResource } from '../auth/resources.mjs';
 import CurrencyLabel from '../components/common/CurrencyLabel';
 import useLoanRegisters from '../components/loans/useLoanRegisters';
+import { hiddenKey, parseHidden, visibleBooks, toggleHidden } from '../utils/hiddenLedgers.mjs';
 import usePageName, { PATH_KEYS } from '../utils/pageNames';
 
 // a sidebar with grouped navigation and icons, a collapse
@@ -190,10 +191,39 @@ function GroupShell({ label, collapsed, dot = false, children }) {
 // The ledger switcher: the ledgers the account can use, one row each, in a small box at the top of the sidebar (no group
 // label, since the Dashboard and the pages below show the selected ledger). The active one is highlighted; clicking switches to it.
 function LedgerList({ books, book, onSelectBook, collapsed, onAfterSelect, canCreate, onCreate }) {
+  const { account } = useAuth();
+  const key = hiddenKey(account?.id);
+  const [hidden, setHidden] = useState(() => parseHidden(readLocal(key)));
+  const [choosing, setChoosing] = useState(false);
+  const toggle = id => setHidden(prev => { const next = toggleHidden(prev, id); writeLocal(key, JSON.stringify(next)); return next; });
+  if (choosing && !collapsed) {
+    return (
+      <div role="group" aria-label="Choose ledgers" className="rounded-xl border border-border bg-card p-1">
+        <p className="px-3 py-1 text-xs font-medium text-muted-foreground">Show in sidebar</p>
+        <ul className="flex flex-col gap-1" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+          {books.map(b => {
+            const on = !hidden.includes(b.id);
+            const locked = b.id === book?.id; // the open ledger always stays listed
+            return (
+              <li key={b.id} className="flex items-center gap-3 px-3 py-1.5 text-sm">
+                <span className="min-w-0 flex-1 truncate">{b.name}{b.active === false ? ' (inactive)' : ''}</span>
+                <button type="button" role="switch" aria-checked={on || locked} aria-label={`Show ${b.name} in the sidebar`}
+                  title={locked ? 'The open ledger always shows' : undefined} disabled={locked} onClick={() => toggle(b.id)}
+                  className={`relative h-4 w-7 shrink-0 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50 ${on || locked ? 'bg-accent' : 'bg-border'}`}>
+                  <span aria-hidden="true" className={`absolute left-0.5 top-0.5 size-3 rounded-full bg-white shadow transition-transform ${on || locked ? 'translate-x-3' : ''}`} />
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+        <button type="button" onClick={() => setChoosing(false)} className={`${itemClass(false, false)} mt-1`}>Done</button>
+      </div>
+    );
+  }
   return (
     <div role="group" aria-label="Ledgers" className={collapsed ? '' : 'rounded-xl border border-border bg-card p-1'}>
       <ul className="flex flex-col gap-1" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-        {books.filter(b => b.active !== false || b.id === book?.id).map(b => {
+        {visibleBooks(books, hidden, book?.id).map(b => {
           const active = book?.id === b.id;
           return (
             <li key={b.id}>
@@ -215,6 +245,13 @@ function LedgerList({ books, book, onSelectBook, collapsed, onAfterSelect, canCr
             </li>
           );
         })}
+        {!collapsed && books.length > 1 && (
+          <li>
+            <button type="button" onClick={() => setChoosing(true)} className={`${itemClass(false, false)} text-xs`}>
+              Choose ledgers{hidden.length > 0 ? ` (${hidden.length} hidden)` : ''}
+            </button>
+          </li>
+        )}
         {canCreate && (
           <li>
             <button type="button" onClick={onCreate} title={collapsed ? 'New ledger' : undefined} aria-label={collapsed ? 'New ledger' : undefined}
@@ -324,7 +361,7 @@ function NavItem({ item, active, collapsed, onNavigate, renderChildren }) {
   );
 }
 
-function NavLinks({ route, groups, collapsed, label, onNavigate, bookId }) {
+function NavLinks({ route, groups, collapsed, label, onNavigate, bookId, flat = false }) {
   // A page with its own children in the sidebar (Projects, Loans) is highlighted only on its own list; on a child page the
   // child is the one highlighted.
   const childrenFor = item => {
@@ -334,7 +371,15 @@ function NavLinks({ route, groups, collapsed, label, onNavigate, bookId }) {
   };
   return (
     <nav aria-label={label} className="flex flex-col gap-4">
-      {groups.map(group => (
+      {flat ? (
+        <ul {...groupListProps(collapsed)}>
+          {groups.flatMap(g => g.items).map(item => (
+            <li key={item.path}>
+              <NavItem item={item} active={isActive(route, item.path) && (!childrenFor(item) || route === item.path)} collapsed={collapsed} onNavigate={onNavigate} renderChildren={childrenFor(item)} />
+            </li>
+          ))}
+        </ul>
+      ) : groups.map(group => (
         <GroupShell key={group.label} label={group.label} collapsed={collapsed} dot={group.items.some(i => isActive(route, i.path))}>
           <ul {...groupListProps(collapsed)}>
             {group.items.map(item => (
@@ -442,7 +487,7 @@ function AppShell({ books, book, onSelectBook, children }) {
           </ul>
         </nav>
       )}
-      <NavLinks label={collapsed ? 'Main navigation' : 'Sheet navigation'} route={route} groups={groups} collapsed={collapsed} onNavigate={() => setSheetOpen(false)} bookId={book?.id} />
+      <NavLinks label={collapsed ? 'Main navigation' : 'Sheet navigation'} route={route} groups={groups} collapsed={collapsed} onNavigate={() => setSheetOpen(false)} bookId={book?.id} flat={Boolean(account?.accessCode)} />
     </>
   );
 
