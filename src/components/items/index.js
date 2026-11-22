@@ -5,7 +5,6 @@ import Modal from '../common/Modal';
 import ConfirmDialog from '../common/ConfirmDialog';
 import { errorMessage } from '../common/format';
 import { inputCls, btnPrimary, btnSecondary, btnDanger, Field } from '../settings/ui';
-import usePageName from '../../utils/pageNames';
 import Select from '../common/Select';
 import Stamp from '../common/Stamp';
 
@@ -130,7 +129,6 @@ function LocationsModal({ bookId, locations, canEdit, onClose, onChanged }) {
 }
 
 export default function ItemTracker() {
-  const pageName = usePageName();
   const { book, canEdit } = useLedger();
   const [items, setItems] = useState(null);
   const [locations, setLocations] = useState([]);
@@ -172,9 +170,8 @@ export default function ItemTracker() {
   };
 
   return (
-    <section className="min-w-0 space-y-4 p-4 sm:p-6">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-xl font-semibold text-foreground">{pageName('items')}</h2>
+    <section className="min-w-0 space-y-4">
+      <div className="flex flex-wrap items-center justify-end gap-2">
         <div className="flex gap-2">
           <button type="button" className={btnSecondary} onClick={() => setShowLocations(true)}>Locations</button>
           {canEdit && <button type="button" className={btnPrimary} onClick={() => setEditing({})}>Add item</button>}

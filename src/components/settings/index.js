@@ -47,7 +47,7 @@ export default function Settings({ book, role }) {
 
   return (
     <section className="w-full min-w-0 space-y-5">
-      <div><h2 className="text-xl font-semibold text-foreground">Settings</h2><p className="text-sm text-muted-foreground">Ledger: {book.name} · base currency <CurrencyLabel code={book.baseCurrency} />. The setup tabs are shared by everyone on this ledger. Appearance is personal, with a ledger default set by an administrator; the Dashboard visuals choice applies to this browser only.</p></div>
+      <div><p className="text-sm text-muted-foreground">Ledger: {book.name} · base currency <CurrencyLabel code={book.baseCurrency} />. The setup tabs are shared by everyone on this ledger. Appearance is personal, with a ledger default set by an administrator; the Dashboard visuals choice applies to this browser only.</p></div>
 
       <div className="divide-y divide-border rounded-xl border border-border bg-card">
         {GROUPS.filter(g => shownTabs.some(t => t.group === g)).map(group => (

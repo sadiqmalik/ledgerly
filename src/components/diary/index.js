@@ -34,7 +34,7 @@ export default function Notebooks() {
     const notebook = list.find(x => x.id === nbId);
     if (!notebook) {
       return (
-        <section className="space-y-3 p-4 sm:p-6">
+        <section className="space-y-3">
           <p role="alert" className="text-sm text-negative">{error || 'That notebook does not exist or you cannot open it.'}</p>
           <a href="#/diary" className="text-sm underline">Back to all {pageName('diary').toLowerCase()}s</a>
         </section>
@@ -44,10 +44,9 @@ export default function Notebooks() {
   }
 
   return (
-    <section className="min-w-0 space-y-4 p-4 sm:p-6">
+    <section className="min-w-0 space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="text-xl font-semibold text-foreground">{pageName('diary')}s</h2>
           <p className="text-xs text-muted-foreground">Each notebook has its own categories and entries. Link one to a ledger to share it by ledger access, or keep it private.</p>
         </div>
         <button type="button" className={btnPrimary} onClick={() => setCreating(true)}>New notebook</button>

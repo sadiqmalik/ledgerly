@@ -9,7 +9,6 @@ import ProjectForm from './ProjectForm';
 import ProjectCard from './ProjectCard';
 import Summary, { Row, Breakdown } from './Summary';
 import { KINDS, dateRange, projectYears, chipCls } from './shared';
-import usePageName from '../../utils/pageNames';
 import Select from '../common/Select';
 
 const list = (p, k) => (p.get(k) || '').split(',').filter(Boolean);
@@ -40,7 +39,6 @@ const sumOf = ps => ps.reduce((a, p) => ({
 }), { count: 0, spent: 0, out: 0, in: 0, paid: 0, pending: 0, excluded: 0, entries: 0 });
 
 export default function ProjectList() {
-  const pageName = usePageName();
   const { book, canEdit, funds, version } = useLedger();
   const [rows, setRows] = useState(null);
   const [error, setError] = useState('');
@@ -150,10 +148,9 @@ export default function ProjectList() {
   );
 
   return (
-    <div className="min-w-0 lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-4 lg:p-6 lg:pr-6">
-      <section className="min-w-0 space-y-4 p-4 pb-20 sm:p-6 lg:p-0 lg:pb-0">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-xl font-semibold text-foreground">{pageName('projects')}</h2>
+    <div className="min-w-0 lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-4">
+      <section className="min-w-0 space-y-4 pb-20 lg:pb-0">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           {canEdit && <button type="button" className={btnPrimary} onClick={() => setCreating(true)}>New project</button>}
         </div>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">

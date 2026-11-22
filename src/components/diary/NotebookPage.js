@@ -106,7 +106,7 @@ export default function NotebookPage({ nbId, catId, notebook, reloadNotebooks })
     if (!categories) return <p className="p-4 text-sm text-muted-foreground" role="status">Loading...</p>;
     if (!category) {
       return (
-        <section className="space-y-3 p-4 sm:p-6">
+        <section className="space-y-3">
           <p role="alert" className="text-sm text-negative">{error || 'That category does not exist.'}</p>
           <a href={`#/diary/${nbId}`} className="text-sm underline">Back to the notebook</a>
         </section>
@@ -122,7 +122,7 @@ export default function NotebookPage({ nbId, catId, notebook, reloadNotebooks })
   }
 
   return (
-    <section className="min-w-0 space-y-4 p-4 sm:p-6">
+    <section className="min-w-0 space-y-4">
       <a href="#/diary" className="text-sm text-muted-foreground underline">&larr; All {pageName('diary').toLowerCase()}s</a>
       <header className="rounded-xl border border-border bg-card p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">

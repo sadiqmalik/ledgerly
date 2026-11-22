@@ -49,7 +49,6 @@ export default function AdminScreen() {
   return (
     <section className="w-full min-w-0 space-y-5">
       <div>
-        <h2 className="text-xl font-semibold text-foreground">Admins &amp; access</h2>
         <p className="text-sm text-muted-foreground">Visible to super administrators only. Admins (super admins and normal admins), access codes, all ledgers and the currency list. The open ledger's own setup is under Settings.</p>
       </div>
 

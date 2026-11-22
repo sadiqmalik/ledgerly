@@ -12,7 +12,6 @@ import LedgerFilters from './LedgerFilters';
 import TotalsBar from './TotalsBar';
 import { parseFilters, serializeFilters, toParams, openingCaption, countActive } from './filterState';
 import { ProfitDialog } from '../../optionalModules';
-import usePageName from '../../utils/pageNames';
 
 const PAGE_SIZE = 100;
 
@@ -31,7 +30,6 @@ function periodCaption(f) {
 }
 
 export default function LedgerScreen() {
-  const pageName = usePageName();
   const { book, canEdit, canQuickAdd, version, notifyChanged, openQuickAdd, openProfit, isClosedDate } = useLedger();
   const [query, setQuery] = useHashQuery();
   const filters = useMemo(() => parseFilters(query), [query]);
@@ -99,8 +97,7 @@ export default function LedgerScreen() {
 
   return (
     <section aria-label="Ledger" className="pb-20 xl:pb-0">
-      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-        <h2 className="text-lg font-semibold">{pageName('ledger')}</h2>
+      <div className="flex flex-wrap items-center justify-end gap-2 mb-3">
         {canQuickAdd && <div className="flex gap-2">{ProfitDialog && <button type="button" className="btn" onClick={openProfit}>Profit entry</button>}<button type="button" className="btn btn-primary" onClick={() => openQuickAdd()}>Add entry <span className="opacity-70 text-xs">(n)</span></button></div>}
       </div>
 

@@ -11,7 +11,6 @@ import EntryPicker, { EntryChips } from './EntryPicker';
 import { errorMessage, findParty, todayISO } from '../common/format';
 import MultiSelect from '../common/MultiSelect';
 import { inputCls, btnPrimary, btnSecondary, btnDanger, Field } from '../settings/ui';
-import usePageName from '../../utils/pageNames';
 import Select from '../common/Select';
 import FilePicker from '../common/FilePicker';
 import Stamp from '../common/Stamp';
@@ -149,7 +148,6 @@ function DocForm({ bookId, doc, copyOf, projects, parties, types, doctors, hospi
 }
 
 export default function Documents() {
-  const pageName = usePageName();
   const { book, canEdit, parties, can } = useLedger();
   const [rows, setRows] = useState(null);
   const [error, setError] = useState('');
@@ -199,8 +197,7 @@ export default function Documents() {
       </a> : null;
 
   return (
-    <section className="min-w-0 space-y-4 p-4 sm:p-6">
-      <h2 className="text-xl font-semibold text-foreground">{pageName('documents')}</h2>
+    <section className="min-w-0 space-y-4">
       <div className="grid grid-cols-2 items-end gap-2 md:grid-cols-[repeat(5,minmax(0,1fr))_auto]">
         <Field label="Project"><MultiSelect label="Project" allLabel="All projects" noneLabel="(none)" options={projOpts} value={filt.project} onChange={v => setFilt(s => ({ ...s, project: v }))} /></Field>
         <Field label="Type"><MultiSelect label="Type" allLabel="All types" options={typeOpts} value={filt.type} onChange={v => setFilt(s => ({ ...s, type: v }))} /></Field>

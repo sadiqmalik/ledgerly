@@ -114,8 +114,8 @@ export default function ProjectDetail({ id }) {
   const selection = useSelection(filtered, canSelect);
 
   const back = <a href="#/projects" className="text-sm text-accent underline">&larr; Projects</a>;
-  if (error) return <section className="space-y-3 p-4 sm:p-6">{back}<p role="alert" className="text-sm text-negative">{error}</p></section>;
-  if (!project) return <section className="space-y-3 p-4 sm:p-6">{back}<p className="text-sm text-muted-foreground">Loading...</p></section>;
+  if (error) return <section className="space-y-3">{back}<p role="alert" className="text-sm text-negative">{error}</p></section>;
+  if (!project) return <section className="space-y-3">{back}<p className="text-sm text-muted-foreground">Loading...</p></section>;
 
   const fund = funds.find(f => f.id === project.fundId);
   const cur = fund?.currency || book.baseCurrency;
@@ -197,8 +197,8 @@ export default function ProjectDetail({ id }) {
   const memo = fund?.kind === 'memo';
   const remaining = project.budget ? project.budget - t.spent : null;
   return (
-    <div className="min-w-0 lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-4 lg:p-6">
-    <section className="min-w-0 space-y-4 p-4 pb-20 sm:p-6 lg:p-0 lg:pb-0">
+    <div className="min-w-0 lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-4">
+    <section className="min-w-0 space-y-4 pb-20 lg:pb-0">
       {back}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">

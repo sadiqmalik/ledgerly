@@ -557,7 +557,7 @@ function AppShell({ books, book, onSelectBook, children }) {
 
         <main
           id="shell-main"
-          className="min-w-0 w-full flex-1 px-4 py-4 md:px-6 md:py-6"
+          className="min-w-0 w-full flex-1 px-4 py-3 md:px-6 md:py-4"
         >
           {children}
         </main>

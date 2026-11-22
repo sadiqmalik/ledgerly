@@ -64,8 +64,7 @@ export default function Dashboard() {
 
   return (
     <section aria-label={`${book.name} dashboard`} className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-2">
-        <h1 className="text-xl font-semibold">Dashboard</h1>
+      <div className="flex items-center justify-end gap-2">
         <div className="flex gap-2">
           <button type="button" className="btn" aria-expanded={custom} onClick={() => setCustom(c => !c)}>Customize</button>
         </div>

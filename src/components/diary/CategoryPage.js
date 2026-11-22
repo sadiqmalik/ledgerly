@@ -38,7 +38,7 @@ export default function CategoryPage({ base, nbId, category, canEdit, n, reload,
   const countdown = id => upcoming.find(u => u.id === id);
 
   return (
-    <section className="min-w-0 space-y-4 p-4 sm:p-6">
+    <section className="min-w-0 space-y-4">
       <a href={`#/diary/${nbId}`} className="text-sm text-muted-foreground underline">&larr; Back to the notebook</a>
       <header className="rounded-xl border border-border bg-card p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
