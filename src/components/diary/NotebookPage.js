@@ -31,7 +31,7 @@ export default function NotebookPage({ nbId, catId, notebook, reloadNotebooks })
   const [names, setNames] = useState([]);
   const [categories, setCategories] = useState(null);
   const [upcoming, setUpcoming] = useState([]);
-  const [view, setView] = useState(null); // null until the categories load, then 'categories' or 'all'
+  const [view, setView] = useState(null); // 'all' (the plain list) by default; the Group by category switch turns on the category cards
   const [rows, setRows] = useState(null);
   const [filt, setFilt] = useState({ category: [], project: [], q: '', from: '', to: '', status: 'active', important: false, kind: 'all' });
   const [form, setForm] = useState(null); // null | { note?, copyOf?, preset? }
@@ -50,7 +50,7 @@ export default function NotebookPage({ nbId, catId, notebook, reloadNotebooks })
     api.get(`${base}/upcoming`, { params: { days: 30, today } }).then(r => { if (!off) setUpcoming(r.data); }).catch(() => {});
     return () => { off = true; };
   }, [base, n]);
-  useEffect(() => { if (categories && view === null) setView(categories.length ? 'categories' : 'all'); }, [categories, view]);
+  useEffect(() => { if (categories && view === null) setView('all'); }, [categories, view]);
 
   const listParams = useMemo(() => Object.fromEntries(Object.entries({
     status: filt.status, q: filt.q, from: filt.from, to: filt.to, project: filt.project.join(','), category: filt.category.join(','),
