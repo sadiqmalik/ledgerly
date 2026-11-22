@@ -6,7 +6,7 @@ const likeEscape = s => s.replace(/[\\%_]/g, m => `\\${m}`);
 
 const mapRegister = r => ({
   id: r.id, name: r.name, borrower: r.borrower, lender: r.lender, description: r.description ?? null,
-  currency: r.currency, createdAt: r.created_at, updatedAt: r.updated_at ?? null, settledAt: r.settled_at ?? null, settled: Boolean(r.settled_at)
+  currency: r.currency, bookId: r.book_id ?? null, createdAt: r.created_at, updatedAt: r.updated_at ?? null, settledAt: r.settled_at ?? null, settled: Boolean(r.settled_at)
 });
 const mapEntry = r => ({
   id: r.id, kind: r.kind, amount: r.amount, date: r.date, lender: r.lender ?? null, receiver: r.receiver ?? null, comment: r.comment ?? null,
@@ -39,8 +39,8 @@ const createLoansRepo = db => {
 
     async createRegister(id, d, createdBy, now) {
       await db.batch([
-        run('INSERT INTO loan_registers (id, name, borrower, lender, description, currency, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-          id, d.name, d.borrower, d.lender, d.description ?? null, d.currency, createdBy.email || createdBy.id, now, now)
+        run('INSERT INTO loan_registers (id, name, borrower, lender, description, currency, book_id, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          id, d.name, d.borrower, d.lender, d.description ?? null, d.currency, d.bookId ?? null, createdBy.email || createdBy.id, now, now)
       ]);
     },
 

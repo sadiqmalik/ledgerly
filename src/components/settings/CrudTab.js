@@ -1,3 +1,4 @@
+import Modal from '../common/Modal';
 import { useState } from 'react';
 import { api } from '../../services/dataAPI';
 import { useLedger } from '../../hooks/LedgerContext';
@@ -134,7 +135,7 @@ export default function CrudTab({
         {showArchivedToggle && archivedCount > 0 && (
           <Toggle compact label={`Show disabled (${archivedCount})`} checked={status === 'all'} onChange={on => setStatus(on ? 'all' : 'active')} />
         )}
-        {canEdit && !editing && (
+        {canEdit && (
           <button type="button" onClick={openNew} className={btnPrimary}>Add {label.toLowerCase()}</button>
         )}
       </div>
@@ -142,26 +143,23 @@ export default function CrudTab({
       {list.error && <p role="alert" className="text-sm text-negative">{list.error}</p>}
 
       {canEdit && editing && draft && (
-        <form onSubmit={save} className="space-y-4 rounded-lg border border-border bg-card p-4">
-          <h3 className="text-base font-semibold text-foreground">
-            {editing.id ? `Edit ${label.toLowerCase()}` : `New ${label.toLowerCase()}`}
-            {editingArchived && <Badge>Disabled</Badge>}
-          </h3>
-          {renderFields(draft, update, fullCtx)}
-          {formError && <p role="alert" className="text-sm text-negative">{formError}</p>}
-          <div className="flex flex-wrap gap-2">
-            <button type="submit" disabled={busy} className={btnPrimary}>Save</button>
-            <button type="button" onClick={close} disabled={busy} className={btnSecondary}>Cancel</button>
-            {editing.id && removal === 'archive' && editingArchived && (
-              <button type="button" onClick={restore} disabled={busy} className={btnSecondary}>Enable</button>
+        <Modal title={editing.id ? `Edit ${label.toLowerCase()}` : `New ${label.toLowerCase()}`} onClose={close} wide>
+          <form onSubmit={save} className="space-y-4">
+            {renderFields(draft, update, fullCtx)}
+            {editing.id && removal === 'archive' && (
+              <Toggle label="Active" hint={`Off hides this ${label.toLowerCase()} from lists and pickers (nothing is deleted). Turn it on to bring it back.`}
+                checked={!editingArchived} onChange={on => (on ? restore() : askRemove())} disabled={busy} />
             )}
-            {editing.id && (
-              <button type="button" onClick={askRemove} disabled={busy} className={btnDanger}>
-                {removal === 'delete' ? 'Delete' : 'Disable'}
-              </button>
-            )}
-          </div>
-        </form>
+            {formError && <p role="alert" className="text-sm text-negative">{formError}</p>}
+            <div className="flex flex-wrap gap-2">
+              <button type="submit" disabled={busy} className={btnPrimary}>Save</button>
+              <button type="button" onClick={close} disabled={busy} className={btnSecondary}>Cancel</button>
+              {editing.id && removal === 'delete' && (
+                <button type="button" onClick={askRemove} disabled={busy} className={`${btnDanger} sm:ml-auto`}>Delete</button>
+              )}
+            </div>
+          </form>
+        </Modal>
       )}
 
       {confirmRemove && editing?.row && (

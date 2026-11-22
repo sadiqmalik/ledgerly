@@ -262,10 +262,11 @@ function ProjectChildren({ bookId, route, onNavigate }) {
 
 // The loans under the Loans item, as the same plain tree the projects use. New loans are made on the Loans page,
 // the same way new projects are made on the Projects page.
-function LoanChildren({ route, onNavigate }) {
+function LoanChildren({ route, onNavigate, bookId }) {
   const { registers } = useLoanRegisters();
   if (!registers) return <p className="py-1 pl-10 text-xs text-muted-foreground">Loading...</p>;
-  const shown = registers.filter(r => !r.settled || route === `/loans/${r.id}`);
+  // Only the open ledger's loans (and loans not linked to any ledger); a settled loan only while it is open.
+  const shown = registers.filter(r => (!r.bookId || r.bookId === bookId || route === `/loans/${r.id}`) && (!r.settled || route === `/loans/${r.id}`));
   return (
     <ul className="nav-tree max-h-[60vh] overflow-y-auto">
       {shown.map(r => {
@@ -328,7 +329,7 @@ function NavLinks({ route, groups, collapsed, label, onNavigate, bookId }) {
   // child is the one highlighted.
   const childrenFor = item => {
     if (item.path === '/projects' && bookId) return () => <ProjectChildren bookId={bookId} route={route} onNavigate={onNavigate} />;
-    if (item.path === '/loans') return () => <LoanChildren route={route} onNavigate={onNavigate} />;
+    if (item.path === '/loans') return () => <LoanChildren route={route} onNavigate={onNavigate} bookId={bookId} />;
     return null;
   };
   return (

@@ -1,7 +1,7 @@
 // Loan registers and their entries. The /api/loans gate in api.js has already checked the session, the `loans`
 // page and the viewer role on :r; each route adds its own minimum role. Every query is scoped by register id.
 const crypto = require('crypto');
-const { loanRoleFor, visibleLoanIds, canAccessLoan } = require('../../server/auth/roles');
+const { loanRoleFor, visibleLoanIds, canAccessLoan, roleFor } = require('../../server/auth/roles');
 const { loanTotals, lenderTotals } = require('../../server/domain/loans');
 const { AppError, ForbiddenError, NotFoundError } = require('../../server/errors');
 const { z, parse, isoDate, money } = require('./validate');
@@ -14,11 +14,13 @@ const kind = z.enum(['taken', 'returned']);
 
 const registerCreate = z.object({
   name: required(120), borrower: required(120), lender: required(120),
-  description: text(500).nullable().optional(), currency: currency.default(() => defaultCurrency())
+  description: text(500).nullable().optional(), currency: currency.default(() => defaultCurrency()),
+  bookId: z.string().min(1).max(64).nullable().optional()
 }).strict();
 const registerUpdate = z.object({
   name: required(120).optional(), borrower: required(120).optional(), lender: required(120).optional(),
-  description: text(500).nullable().optional(), currency: currency.optional(), settled: z.boolean().optional()
+  description: text(500).nullable().optional(), currency: currency.optional(), settled: z.boolean().optional(),
+  bookId: z.string().min(1).max(64).nullable().optional()
 }).strict();
 const entryCreate = z.object({
   kind, amount: money, date: isoDate, lender: text(120).nullable().optional(), receiver: text(120).nullable().optional(), comment: text(500).nullable().optional()
@@ -33,7 +35,12 @@ const filters = z.object({
 const shareCodes = z.object({ codeIds: z.array(z.string().min(1).max(64)).max(100) }).strict();
 
 const blank = v => (v === '' ? null : v);
-const REGISTER_COLS = { name: 'name', borrower: 'borrower', lender: 'lender', description: 'description', currency: 'currency' };
+const REGISTER_COLS = { name: 'name', borrower: 'borrower', lender: 'lender', description: 'description', currency: 'currency', bookId: 'book_id' };
+// A loan may only be linked to a ledger the account itself has a role in (a super administrator: any ledger).
+const checkLedger = async (repo, account, bookId) => {
+  if (!bookId) return;
+  if (!(await repo.books.get(bookId)) || !roleFor(account, bookId)) throw new NotFoundError('Ledger not found');
+};
 const ENTRY_COLS = { kind: 'kind', amount: 'amount', date: 'date', lender: 'lender', receiver: 'receiver', comment: 'comment' };
 const toCols = (data, map) => {
   const cols = {};
@@ -84,6 +91,7 @@ const registerLoanRoutes = (app, { repo }) => {
     const data = parse(registerCreate, c.get('body'));
     data.description = blank(data.description);
     await repo.currencies.assertUsable(data.currency);
+    await checkLedger(repo, account, data.bookId);
     const id = crypto.randomUUID();
     await R.createRegister(id, data, account, now());
     if (!account.isSuperAdmin) await R.grantAdmin(account.id, id);
@@ -138,6 +146,7 @@ const registerLoanRoutes = (app, { repo }) => {
       throw new AppError('Cannot change the currency of a register that has entries', 409);
     }
     if (data.currency !== undefined && data.currency !== register.currency) await repo.currencies.assertUsable(data.currency);
+    if (data.bookId !== undefined) await checkLedger(repo, c.get('account'), data.bookId);
     const cols = toCols(data, REGISTER_COLS);
     if (settled !== undefined && settled !== register.settled) cols.settled_at = settled ? now() : null;
     await R.updateRegister(register.id, cols, now());

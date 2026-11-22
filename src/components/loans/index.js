@@ -6,16 +6,20 @@ import RegisterDialog from './RegisterDialog';
 import RegisterPage from './RegisterPage';
 import { btnPrimary, Toggle } from '../settings/ui';
 import { useAuth } from '../../auth/AuthContext';
+import { useBooks } from '../../hooks/BooksContext';
 
 function RegisterList() {
   const { registers, error } = useLoanRegisters();
   const { account } = useAuth();
+  const { book } = useBooks();
   // Access-code sessions are view-only: they never create loans (the server refuses it too).
   const canCreate = !account?.accessCode;
   const [creating, setCreating] = useState(false);
   const [showSettled, setShowSettled] = useState(false);
-  const settledCount = (registers || []).filter(r => r.settled).length;
-  const visible = (registers || []).filter(r => showSettled || !r.settled);
+  const settledCount = (registers || []).filter(r => r.settled && (!r.bookId || r.bookId === book?.id)).length;
+  // The open ledger's loans plus loans not linked to any ledger.
+  const mine = (registers || []).filter(r => !r.bookId || r.bookId === book?.id);
+  const visible = mine.filter(r => showSettled || !r.settled);
   return (
     <section className="space-y-4" aria-label="Loans">
       <div className="flex flex-wrap items-center justify-between gap-2">

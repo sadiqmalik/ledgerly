@@ -104,9 +104,14 @@ function App() {
     if (seg.length > 1) window.location.hash = `#/${seg[0]}`;
     else if (window.location.hash.includes('?')) window.history.replaceState(null, '', path);
   }, []);
-  const ctx = useMemo(() => ({ books: books || [], reloadBooks, selectBook }), [books, reloadBooks, selectBook]);
-
   const book = books?.find(b => b.id === bookId) || null;
+  const ctx = useMemo(() => ({ books: books || [], book, reloadBooks, selectBook }), [books, book, reloadBooks, selectBook]);
+
+  // Any route the account may not open (any page, with or without a ledger) goes to its first allowed page, normally home.
+  const guard = decideRoute(route, account);
+  useEffect(() => {
+    if (account && !guard.allowed && guard.redirect) window.location.replace(`#${guard.redirect}`);
+  }, [account, guard.allowed, guard.redirect]);
 
   // An account with loan registers but no ledger lands on the loan registers instead of an empty page.
   useEffect(() => {
@@ -118,8 +123,8 @@ function App() {
     <BooksContext.Provider value={ctx}>
     <AppShell books={books || []} book={book} onSelectBook={selectBook}>
       {error && <div className="alert alert-error" role="alert">{error}</div>}
-      {isLoansRoute(route) && <LoansOrNothing route={route} />}
-      {route === '/admin' && account?.isSuperAdmin && !book && <AdminScreen />}
+      {isLoansRoute(route) && guard.allowed && <LoansOrNothing route={route} />}
+      {route === '/admin' && guard.allowed && !book && <AdminScreen />}
       {!isLoansRoute(route) && route !== '/admin' && books && !book && !error && <p className="muted">{account?.isSuperAdmin ? 'No ledger exists yet. Use "New ledger" in the sidebar to create your first one.' : 'No books are available for this account yet.'}</p>}
       {book && !isLoansRoute(route) && (
         <>

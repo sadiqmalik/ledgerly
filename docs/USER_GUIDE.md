@@ -671,6 +671,8 @@ A super administrator sets these on the **Admins** page. **Add admin** opens a d
 3. **Edit pages**: which pages the admin may open.
 4. **Make super admin** or **Make normal admin**: change the type. They are signed out and must sign in again. You cannot change your own type, and the last active super admin cannot be demoted.
 
+**Loans and ledgers.** A loan can be linked to a ledger (the **Ledger** box in **New loan** and **Edit loan**; a new loan starts with the ledger that is open). The sidebar and the Loans page then show a loan only under its ledger. A loan with **No ledger** (all older ones until you link them) shows under every ledger. Linking only changes where the loan is listed; who may open it is still set per loan. If a ledger is deleted its loans are kept, unlinked.
+
 The **Loans** page is new. Whoever creates a loan becomes its admin. A loan admin can change that loan, but cannot give another user access to it; only a super administrator can.
 
 To let people who sign in with an **access code** read a loan, open the loan, press **Edit**, and switch on the codes under **Shared with access codes (view only)**. A code sees only the loans switched on for it. It can read the entries and totals, and it cannot add, change, settle or delete anything, or create a loan. The code also needs the **Loans** page turned on (Admin, Access codes). A loan admin can share their own loans this way; a super administrator can share any loan.
@@ -771,7 +773,7 @@ Then add your own funds and accounts in Settings.
 
 ### Deactivating, reactivating and deleting a ledger
 
-Administration › All ledgers shows every ledger as a card with **Open**, **Settings**, **Disable** (or **Enable** when it is off) and **Delete**.
+Administration › All ledgers shows every ledger as a card with **Open**, **Edit details** (name and base currency, in Settings › Details), **Disable** (or **Enable** when it is off) and **Delete**.
 
 1. **Deactivate** (an admin, from **Settings › Details**). Press **Deactivate ledger**, type the ledger's name and confirm. The ledger disappears for everyone, including its members. Nothing is deleted.
 2. **Enable** (a super administrator only; the Settings box calls it Reactivate). The deactivated ledger stays visible to super administrators, marked **Inactive**. Open **Settings › Details** (it shows "Ledger is inactive" and a **Reactivate** button) or **Administration › All ledgers**. Type the name and confirm. Everything comes back as it was.

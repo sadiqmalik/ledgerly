@@ -38,9 +38,6 @@ const createItemsRepo = ledger => ({
       `SELECT l.*, (SELECT COUNT(*) FROM items i WHERE i.location_id = l.id AND i.book_id = l.book_id) AS item_count
        FROM item_locations l WHERE l.book_id = ? ORDER BY LOWER(l.name), l.id`, bookId)).map(mapLocation);
   },
-  async getLocation(bookId, id) {
-    return ledger.inBook('item_locations', bookId, id);
-  },
   async locationByName(bookId, name) {
     return ledger.first('SELECT * FROM item_locations WHERE book_id = ? AND LOWER(name) = LOWER(?)', bookId, name);
   },

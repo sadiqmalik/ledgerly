@@ -1,0 +1,20 @@
+-- Empties the demo tables (not accounts or sessions) so demo-seed.sql can be loaded again.
+DELETE FROM entry_documents;
+DELETE FROM entries;
+DELETE FROM documents;
+DELETE FROM year_closes;
+DELETE FROM profit_rates;
+DELETE FROM loan_entries;
+DELETE FROM loan_registers;
+DELETE FROM diary_notes;
+DELETE FROM diary_categories;
+DELETE FROM diary_notebooks;
+DELETE FROM items;
+DELETE FROM item_locations;
+DELETE FROM projects;
+DELETE FROM funds;
+DELETE FROM holders;
+DELETE FROM categories;
+DELETE FROM parties;
+DELETE FROM book_settings;
+DELETE FROM books;

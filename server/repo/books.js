@@ -53,6 +53,7 @@ const createBooksRepo = (db, authStore) => {
       const accounts = (await authStore.accounts.list()).filter(a => a.memberships.some(m => m.bookId === id));
       await db.batch([
         ...BOOK_TABLES.map(t => run(`DELETE FROM ${t} WHERE book_id = ?`, id)),
+        run('UPDATE loan_registers SET book_id = NULL WHERE book_id = ?', id), // loans survive a deleted ledger, unlinked
         run('DELETE FROM books WHERE id = ?', id),
         ...accounts.map(a => run('UPDATE accounts SET memberships = ?, updated_at = ? WHERE id = ?',
           JSON.stringify(a.memberships.filter(m => m.bookId !== id)), new Date().toISOString(), a.id))

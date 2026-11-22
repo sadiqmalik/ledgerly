@@ -18,7 +18,7 @@ A family finance and records web app that replaces a shared Excel workbook. It i
 | Build tool | Vite with `@vitejs/plugin-react` | 8 |
 | Backend framework | Hono on a Cloudflare Worker (`worker/index.js`, `worker/api.js`, routes in `worker/routes/`) | 4 |
 | Validation | zod (every request body and query) | 3 |
-| Database | Cloudflare D1 (SQLite), schema by SQL migrations in `migrations/` (23 files, applied in order, additive) | n/a |
+| Database | Cloudflare D1 (SQLite), schema by SQL migrations in `migrations/` (24 files, applied in order, additive) | n/a |
 | File storage | Cloudflare R2: bucket `DOCS` (document files, `docs/<book>/<doc>`) and `BACKUPS` (nightly JSON backups, newest 30 kept) | n/a |
 | Static hosting | Worker Assets binding (`dist/`, single-page-app fallback) | n/a |
 | Scheduled work | Cloudflare Cron Trigger, daily 02:00 UTC: purge expired sessions, write a backup when the newest is `BACKUP_EVERY_DAYS` old | n/a |
@@ -66,7 +66,7 @@ To deploy: a Cloudflare account with Workers, D1 and R2 enabled, and Wrangler lo
 | `src/` | React app: `components/`, `layout/`, `hooks/`, `services/`, `auth/`, `utils/`, `styles/` |
 | `worker/` | Worker entry, API wiring and route modules |
 | `server/` | Domain logic (`domain/`), repositories (`repo/`), auth (`auth/`) |
-| `migrations/` | D1 schema migrations `0001` to `0023` |
+| `migrations/` | D1 schema migrations `0001` to `0024` |
 | `test/` | API, auth and domain tests (`node --test`) |
 | `tools/import-xlsx/` | One-time Excel import (needs the private workbook, never committed) |
 | `scripts/` | Account CLI, password reset, public-sync tool |

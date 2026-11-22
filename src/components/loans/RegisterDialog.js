@@ -8,18 +8,23 @@ import NamesInput from '../common/NamesInput';
 import { useCurrencies } from '../../hooks/CurrencyContext';
 import { notifyLoansChanged, useLoanNames } from './useLoanRegisters';
 import { canAdmin } from './shared';
+import Select from '../common/Select';
+import { useBooks } from '../../hooks/BooksContext';
 
 // Create (register null) or edit a register. The currency is locked once entries exist.
 // A loan admin of an existing register also chooses which access codes may view it (view-only).
 export default function RegisterDialog({ register, copyOf, onClose, onSaved }) {
   const locked = Boolean(register && register.totals?.count > 0);
+  const { books, book: openBook } = useBooks();
   const names = useLoanNames();
   const { active } = useCurrencies();
   // A duplicate (copyOf) pre-fills the people, description and currency; it starts with no entries or sharing.
   const src = register || copyOf;
   const [f, setF] = useState({
     name: register ? register.name : copyOf ? `${copyOf.name} (copy)` : '', borrower: src?.borrower || '', lender: src?.lender || '',
-    description: src?.description || '', currency: src?.currency || active[0]?.code || 'USD'
+    description: src?.description || '', currency: src?.currency || active[0]?.code || 'USD',
+    // A new loan starts linked to the ledger that is open; a loan with no ledger shows under every ledger.
+    bookId: register ? (register.bookId || '') : (copyOf ? (copyOf.bookId || '') : (openBook?.id || ''))
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -44,7 +49,7 @@ export default function RegisterDialog({ register, copyOf, onClose, onSaved }) {
 
   const submit = async e => {
     e.preventDefault();
-    const body = { name: f.name.trim(), borrower: f.borrower.trim(), lender: f.lender.trim(), description: f.description.trim() || null };
+    const body = { name: f.name.trim(), borrower: f.borrower.trim(), lender: f.lender.trim(), description: f.description.trim() || null, bookId: f.bookId || null };
     if (!body.name || !body.borrower || !body.lender) { setError('Enter a name, a borrower and a lender.'); return; }
     if (body.borrower.length > 120 || body.lender.length > 120) { setError('Too many names: borrower and lender can each be up to 120 characters in total.'); return; }
     const currency = f.currency.trim().toUpperCase();
@@ -72,6 +77,12 @@ export default function RegisterDialog({ register, copyOf, onClose, onSaved }) {
         <Field label="Borrower (who took the loan)"><NamesInput value={f.borrower} onChange={v => setF(s => ({ ...s, borrower: v }))} items={names} inputClassName={inputCls} placeholder="Pick or type a name" /></Field>
         <Field label="Lender (who gave it)"><NamesInput value={f.lender} onChange={v => setF(s => ({ ...s, lender: v }))} items={names} inputClassName={inputCls} placeholder="Pick or type a name" /></Field>
         <Field label="Description"><textarea rows={3} className={inputCls} value={f.description} onChange={set('description')} maxLength={500} /></Field>
+        <Field label="Ledger">
+          <Select className={inputCls} value={f.bookId} onChange={e => setF(s => ({ ...s, bookId: e.target.value }))} aria-label="Ledger">
+            <option value="">No ledger (shown under every ledger)</option>
+            {books.filter(b => b.active !== false).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </Select>
+        </Field>
         <Field label="Currency">
           <CurrencySelect className={inputCls} value={f.currency} onChange={currency => setF(s => ({ ...s, currency }))} disabled={locked} aria-label="Currency" />
         </Field>

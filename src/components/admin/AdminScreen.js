@@ -593,7 +593,7 @@ function LedgersPanel() {
             </p>
             <div className="mt-auto flex flex-wrap gap-2">
               <button type="button" className={btnSecondary} onClick={() => { selectBook(b.id); window.location.hash = '#/'; }}>Open</button>
-              <button type="button" className={btnSecondary} onClick={() => { selectBook(b.id); window.location.hash = '#/settings'; }}>Settings</button>
+              <button type="button" className={btnSecondary} onClick={() => { selectBook(b.id); window.location.hash = '#/settings?tab=details'; }}>Edit details</button>
               {b.active === false
                 ? <button type="button" className={btnSecondary} onClick={() => setReactivating(b)}>Enable</button>
                 : <button type="button" className={btnSecondary} onClick={() => setDisabling(b)}>Disable</button>}

@@ -1,7 +1,7 @@
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const request = require('supertest');
-const { makeContext, withCookie } = require('./helpers');
+const { makeContext, withCookie, BOOK } = require('./helpers');
 const { createAccountStore } = require('../../server/auth/accounts');
 
 const PASS = 'loan test account passphrase';
@@ -51,6 +51,20 @@ describe('loan registers', () => {
     await actors.plain.get(`/api/loans/${res.body.id}`).expect(403);
     const after = await actors.plain.get('/api/auth/me');
     assert.deepEqual(after.body.account.loanMemberships, []);
+  });
+
+  it('a loan can be linked to a ledger, relinked or unlinked; unknown ledgers are refused; a deleted ledger unlinks it', async () => {
+    const made = (await ctx.api.post('/api/loans').send(body({ name: 'Linked', bookId: BOOK })).expect(201)).body;
+    assert.equal(made.bookId, BOOK);
+    assert.equal(regA.bookId, null); // loans made without a ledger stay unlinked
+    assert.equal((await ctx.api.post('/api/loans').send(body({ name: 'X', bookId: 'nope' }))).status, 404);
+    assert.equal((await ctx.api.put(`/api/loans/${made.id}`).send({ bookId: null })).body.bookId, null);
+    assert.equal((await ctx.api.put(`/api/loans/${made.id}`).send({ bookId: BOOK })).body.bookId, BOOK);
+    assert.equal((await ctx.api.put(`/api/loans/${made.id}`).send({ bookId: 'nope' })).status, 404);
+    await ctx.repo.books.create({ id: 'tmp_loan_book', name: 'Temp', baseCurrency: 'PKR', createdAt: new Date().toISOString() });
+    await ctx.api.put(`/api/loans/${made.id}`).send({ bookId: 'tmp_loan_book' }).expect(200);
+    await ctx.repo.books.remove('tmp_loan_book');
+    assert.equal((await ctx.api.get(`/api/loans/${made.id}/entries`)).body.register.bookId, null);
   });
 
   it('validates registers and entries', async () => {

@@ -34,7 +34,10 @@ const TABS = [
 ];
 
 export default function Settings({ book, role }) {
-  const [tabKey, setTabKey] = useState('funds');
+  const [tabKey, setTabKey] = useState(() => {
+    const t = new URLSearchParams(window.location.hash.split('?')[1] || '').get('tab');
+    return TABS.some(x => x.key === t) ? t : 'funds';
+  });
   if (!book) return null;
 
   const shownTabs = TABS.filter(t => !t.visibleTo || t.visibleTo.includes(role));
