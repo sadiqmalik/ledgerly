@@ -1,5 +1,6 @@
 const { describe, it, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
+const request = require('supertest');
 const { makeContext, withCookie, BOOK } = require('./helpers');
 const { createAccountStore } = require('../../server/auth/accounts');
 const R = require('../../server/auth/resources');
@@ -49,7 +50,7 @@ describe('notebooks API', () => {
     assert.equal((await plain.get(NB)).status, 403);
     assert.equal((await ctx.anonymous.get(NB)).status, 401);
     assert.equal(R.RESOURCES.includes('diary'), true);
-    assert.equal(R.CODE_RESOURCES.includes('diary'), false);
+    assert.equal(R.CODE_RESOURCES.includes('diary'), true);
     assert.equal(R.DEFAULT_ALL_RESOURCES.includes('diary'), false);
     // Creating: an unlinked notebook only by a super admin, a linked one needs an Editor role in that ledger.
     assert.equal((await editor.post(NB).send({ name: 'x' })).status, 403);
@@ -150,5 +151,48 @@ describe('notebooks API', () => {
     await ctx.repo.books.remove(BOOK);
     assert.equal((await ctx.d1.prepare('SELECT COUNT(*) AS n FROM diary_notebooks').first()).n, 0);
     assert.equal((await ctx.d1.prepare('SELECT COUNT(*) AS n FROM diary_notes').first()).n, 0);
+  });
+
+  describe('access codes', () => {
+    const codeApi = async (resources, bookIds = [BOOK]) => {
+      const made = await owner.post('/api/admin/access-codes').send({ name: 'Board', bookIds, ...(resources ? { resources } : {}) });
+      assert.equal(made.status, 201);
+      const res = await request(ctx.app).post('/api/auth/access-code').set('cf-connecting-ip', '10.7.7.7').send({ code: made.body.accessCode.code });
+      assert.equal(res.status, 200);
+      return withCookie(ctx.app, res.headers['set-cookie'][0].split(';')[0]);
+    };
+
+    it('reads only the notebooks linked to its ledgers, and changes nothing', async () => {
+      const fam = await linked('Family');
+      const cat = (await owner.post(`${NB}/${fam.id}/categories`).send({ name: 'Cars' })).body;
+      const note = (await entry(fam.id, { title: 'Insurance' })).body;
+      const priv = await unlinked('Private');
+      const car = (await owner.post(NB).send({ name: 'Car', bookId: 'personal' })).body;
+      const code = await codeApi(['diary']);
+      const list = (await code.get(NB)).body;
+      assert.deepEqual(list.map(n => [n.name, n.canEdit, n.canDelete, n.canRelink]), [['Family', false, false, false]]);
+      assert.equal((await code.get(`${NB}/${fam.id}/categories`)).body.length, 1);
+      assert.equal((await code.get(`${NB}/${fam.id}/entries`)).body.length, 1);
+      assert.equal((await code.get(`${NB}/${fam.id}/upcoming`)).status, 200);
+      assert.equal((await code.get(`${NB}/${fam.id}/names`)).status, 200);
+      for (const nb of [car.id, priv.id]) {
+        assert.equal((await code.get(`${NB}/${nb}/entries`)).status, 404);
+        assert.equal((await code.get(`${NB}/${nb}/categories`)).status, 404);
+      }
+      const writes = [
+        ['post', NB, { name: 'x', bookId: BOOK }], ['put', `${NB}/${fam.id}`, { name: 'y' }], ['delete', `${NB}/${fam.id}`],
+        ['post', `${NB}/${fam.id}/entries`, { date: '2026-02-01', title: 'z' }], ['put', `${NB}/${fam.id}/entries/${note.id}`, { title: 'z' }],
+        ['delete', `${NB}/${fam.id}/entries/${note.id}`], ['post', `${NB}/${fam.id}/categories`, { name: 'New' }],
+        ['put', `${NB}/${fam.id}/categories/${cat.id}`, { name: 'New' }], ['delete', `${NB}/${fam.id}/categories/${cat.id}`]
+      ];
+      for (const [method, url, body] of writes) assert.equal((await code[method](url).send(body)).status, 403, `${method} ${url}`);
+      assert.equal((await owner.get(`${NB}/${fam.id}/entries`)).body.length, 1);
+    });
+
+    it('is refused without the Notebook page', async () => {
+      await linked('Family');
+      const code = await codeApi(['dashboard']);
+      assert.equal((await code.get(NB)).status, 403);
+    });
   });
 });

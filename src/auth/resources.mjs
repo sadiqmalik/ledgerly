@@ -4,7 +4,7 @@ export const RESOURCES = ['dashboard', 'ledger', 'reports', 'items', 'projects',
 export const OPT_IN_RESOURCES = ['diary'];
 export const DEFAULT_ALL_RESOURCES = RESOURCES.filter(key => !OPT_IN_RESOURCES.includes(key));
 // Access codes are view-only, so they never get the Settings page.
-export const CODE_RESOURCES = RESOURCES.filter(key => key !== 'settings' && key !== 'diary');
+export const CODE_RESOURCES = RESOURCES.filter(key => key !== 'settings');
 export const DEFAULT_CODE_RESOURCES = ['dashboard', 'ledger', 'reports', 'items'];
 export const RESOURCE_LABELS = {
   dashboard: 'Dashboard', ledger: 'Ledger', reports: 'Reports', items: 'Item Vault',

@@ -6,6 +6,7 @@ import Stamp from '../common/Stamp';
 import { errorMessage } from '../common/format';
 import { btnPrimary } from '../settings/ui';
 import { useBooks } from '../../hooks/BooksContext';
+import { useAuth } from '../../auth/AuthContext';
 import NotebookForm from './NotebookForm';
 import NotebookPage from './NotebookPage';
 import { pill } from './shared';
@@ -16,6 +17,8 @@ const safeDecode = s => { try { return decodeURIComponent(s); } catch { return s
 // opens a category. A notebook is linked to a ledger (that ledger's access decides who can use it) or to none (only you).
 export default function Notebooks() {
   const route = useHashRoute();
+  const { account } = useAuth();
+  const readOnly = !!account?.accessCode; // access codes only read the notebooks of their ledgers
   const pageName = usePageName();
   const [, nbId, catId] = route.split('/').filter(Boolean).map(safeDecode);
   const [list, setList] = useState(null);
@@ -53,7 +56,7 @@ export default function Notebooks() {
         <div>
           <p className="text-xs text-muted-foreground">Each notebook has its own categories and entries. Link one to a ledger to share it by ledger access, or keep it private.</p>
         </div>
-        <button type="button" className={btnPrimary} onClick={() => setCreating(true)}>New notebook</button>
+        {!readOnly && <button type="button" className={btnPrimary} onClick={() => setCreating(true)}>New notebook</button>}
       </div>
       {error && <p role="alert" className="text-sm text-negative">{error}</p>}
       {list && !mine.length && !error && <p className="text-sm text-muted-foreground">No notebooks yet. Use New notebook to create one.</p>}

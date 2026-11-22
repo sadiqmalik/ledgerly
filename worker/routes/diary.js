@@ -68,10 +68,12 @@ const registerDiaryRoutes = (app, { repo }) => {
   const now = () => new Date().toISOString();
   const NB_SELECT = 'SELECT n.*, b.name AS book_name FROM diary_notebooks n LEFT JOIN books b ON b.id = n.book_id';
 
-  // The signed-in account, or a refusal. Needs the Notebook page unless a super administrator; never an access code.
+  // The signed-in account, or a refusal. Needs the Notebook page unless a super administrator. An access code may only
+  // read (GET), and only notebooks linked to its ledgers (rights() finds no role for private ones).
   const who = c => {
     const account = c.get('account');
-    if (!account || !account.id || account.accessCode) throw new ForbiddenError('The Notebook is private');
+    if (!account || !account.id) throw new ForbiddenError('The Notebook is private');
+    if (account.accessCode && c.req.method !== 'GET') throw new ForbiddenError('Access codes are view only');
     if (!account.isSuperAdmin && !hasResource(account, 'diary')) throw new ForbiddenError('This account cannot use the Notebook');
     return account;
   };
@@ -80,6 +82,7 @@ const registerDiaryRoutes = (app, { repo }) => {
     if (!nb.book_id) return account.isSuperAdmin && nb.owner_id === account.id ? { canEdit: true, isOwner: true, canDelete: true, canRelink: true } : null;
     const role = roleFor(account, nb.book_id);
     if (!role) return null;
+    if (account.accessCode) return { canEdit: false, isOwner: false, canDelete: false, canRelink: false };
     const isOwner = nb.owner_id === account.id;
     return { canEdit: RANK[role] >= RANK.editor, isOwner, canDelete: isOwner || role === 'admin', canRelink: account.isSuperAdmin && isOwner };
   };

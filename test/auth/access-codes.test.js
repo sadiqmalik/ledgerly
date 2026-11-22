@@ -22,6 +22,17 @@ describe('access codes', () => {
     request(ctx.app).post('/api/auth/access-code').set('cf-connecting-ip', ip).send({ code });
   const cookieOf = res => withCookie(ctx.app, res.headers['set-cookie'][0].split(';')[0]);
 
+  it('can be given the Notebook page (opt-in), and a code without it is refused on notebooks', async () => {
+    const mk = async resources => {
+      const made = await ctx.api.post('/api/admin/access-codes').send({ name: 'Board', bookIds: [BOOK], ...(resources ? { resources } : {}) });
+      assert.equal(made.status, 201);
+      assert.equal(made.body.accessCode.resources.includes('diary'), !!resources);
+      return cookieOf(await signIn(made.body.accessCode.code, resources ? '10.0.0.2' : '10.0.0.3'));
+    };
+    assert.equal((await (await mk(['diary'])).get('/api/diary/notebooks')).status, 200);
+    assert.equal((await (await mk()).get('/api/diary/notebooks')).status, 403);
+  });
+
   it('signs in with a code and gets viewer access to the named book only', async () => {
     const created = await createCode();
     const res = await signIn(created.code);

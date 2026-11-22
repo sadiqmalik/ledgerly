@@ -303,9 +303,11 @@ describe('resource helpers', () => {
       for (const who of [full, code]) assert.equal(decideRoute(route, who).allowed, false, route);
     }
     for (const route of ['/diary/', '/diary/a/b/c', '/diaryx']) assert.equal(decideRoute(route, root).allowed, false, route);
-    // Opt-in: "every page" for a regular account never includes the Notebook; an access code can never have it.
+    // Opt-in: "every page" for a regular account never includes the Notebook; an access code may have it (read only, see diary.test.js).
     assert.equal(R.effectiveResources({ resources: null }).includes('diary'), false);
-    assert.equal(R.effectiveResources({ accessCode: true, resources: ['diary', 'items'] }).includes('diary'), false);
+    assert.equal(R.effectiveResources({ accessCode: true, resources: ['diary', 'items'] }).includes('diary'), true);
+    assert.equal(R.effectiveResources({ accessCode: true }).includes('diary'), false); // opt-in
+    assert.equal(R.DEFAULT_CODE_RESOURCES.includes('diary'), false);
     assert.equal(R.effectiveResources({ isSuperAdmin: true }).includes('diary'), true);
     assert.deepEqual(R.requiredResources('GET', '/diary', {}), []); // not under a book any more: /api/diary checks itself
   });

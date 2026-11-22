@@ -10,6 +10,9 @@ export default function ResourcePicker({ value, onChange, disabled, legend = 'Pa
     <div className="space-y-1">
       <ToggleGrid legend={legend} options={keys.map(key => ({ value: key, label: RESOURCE_LABELS[key] }))}
         value={value} onChange={onChange} disabled={disabled} minWidth={11} />
+      {forCode && value.includes('diary') && (
+        <p className="text-xs text-muted-foreground">Notebook: view only, and only the notebooks linked to the ledgers this code is attached to. Private notebooks stay hidden.</p>
+      )}
       {notebookLedgers && value.includes('diary') && (
         <p className="text-xs text-muted-foreground">
           Notebook: this admin can open the notebooks linked to ledgers they have a role in. A Viewer reads, an Editor or Admin changes. A notebook that is not linked to a ledger stays private to its owner.

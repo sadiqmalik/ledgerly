@@ -525,7 +525,7 @@ The Notebook page lists the open ledger's notebooks plus your private ones (link
 
 - **Linked to a ledger**: it follows that ledger's access. A super admin, or an admin who has the Notebook page switched on and a role in that ledger, can open it. A **Viewer** only reads it (view only), an **Editor or Admin** can change it. Several notebooks can be linked to the same ledger.
 - **Not linked to a ledger** (super admins only): private to you. No other admin can see it, not even another super admin.
-- Access codes never see notebooks. Only the owner (or a ledger Admin or super admin) can delete a notebook, and only the owning super admin can change which ledger it is linked to.
+- An access code sees notebooks only when you switch on its Notebook page: it can then read (never change) the notebooks linked to the ledgers it is attached to. Private notebooks stay hidden. Only the owner (or a ledger Admin or super admin) can delete a notebook, and only the owning super admin can change which ledger it is linked to.
 
 An entry is an ordinary **note** (a date, a title and a message, with **From** (who said it) and **For** (who it is for); names you used before are offered as suggestions) until you switch on **Important date**. An important date is a day to remember, such as an anniversary, a first service or a purchase date, with a **small note**; switch on **Repeats every year** for anniversaries and birthdays. It shows under Upcoming. This is separate from **Starred**, which only puts a star on any entry. The two switches sit side by side at the top of the form.
 

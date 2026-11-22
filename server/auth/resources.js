@@ -19,8 +19,8 @@ const PROJECT_NAME_READERS = Object.freeze(['dashboard', 'ledger', 'reports', 'p
 
 // Access codes are strictly view-only, so they can never be given the Settings page (it is where things are edited),
 // whatever their saved list says.
-// They never get the private Notebook either.
-const CODE_RESOURCES = Object.freeze(RESOURCES.filter(key => key !== 'settings' && key !== 'diary'));
+// The Notebook is allowed (read only, and only the notebooks linked to the code's ledgers); it stays opt-in.
+const CODE_RESOURCES = Object.freeze(RESOURCES.filter(key => key !== 'settings'));
 const isResource = key => RESOURCES.includes(key);
 // Canonical order, no duplicates, unknown keys dropped.
 const normalizeResources = list => RESOURCES.filter(key => Array.isArray(list) && list.includes(key));
