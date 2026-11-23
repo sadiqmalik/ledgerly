@@ -88,7 +88,7 @@ export default function NotebookPage({ nbId, catId, notebook, reloadNotebooks })
     <>
       {form && (
         <NoteForm base={base} note={form.note || null} copyOf={form.copyOf} preset={form.preset} projects={projects} categories={catList} names={names}
-          onClose={() => setForm(null)} onSaved={() => { reload(); setForm(null); }} />
+          canEdit={canEdit} onClose={() => setForm(null)} onSaved={() => { reload(); setForm(null); }} />
       )}
       {creatingCategory && (
         <CategoryForm base={base} onClose={() => setCreatingCategory(false)}

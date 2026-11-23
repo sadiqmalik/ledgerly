@@ -16,6 +16,8 @@ import { errorMessage, findParty } from '../common/format';
 import { formatMoney, parseMoney } from '../../utils/money';
 import QuantityPriceFields from '../common/QuantityPriceFields';
 import Select from '../common/Select';
+import Amount from '../common/Amount';
+import RecordView from '../common/RecordView';
 import {
   amountMinorFromQuantityAndUnitPrice,
   parseQuantityInput,
@@ -83,6 +85,32 @@ function EntryDocuments({ bookId, entryId, canChange, onChanged }) {
       {canChange && (
         <ComboInput value={pick} onChange={onPick} items={items} disabled={busy} placeholder="Attach document" noun="document" inputClassName="w-full" />
       )}
+    </div>
+  );
+}
+
+// Read-only list of the documents linked to an entry (viewers, closed years).
+function EntryDocumentsView({ bookId, entryId }) {
+  const [linked, setLinked] = useState([]);
+  const base = `/books/${bookId}/documents`;
+  useEffect(() => {
+    let off = false;
+    api.get(`${base}/for-entry/${entryId}`).then(r => { if (!off) setLinked(Array.isArray(r.data) ? r.data : []); }).catch(() => {});
+    return () => { off = true; };
+  }, [base, entryId]);
+  if (!linked.length) return null;
+  return (
+    <div className="rounded-lg border border-border bg-muted/30 px-3 py-2">
+      <div className="text-xs text-muted-foreground">Documents</div>
+      <ul className="space-y-1" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+        {linked.map(d => (
+          <li key={d.id} className="text-sm">
+            <span className="font-medium text-foreground">{d.title}</span>{' '}
+            <span className="text-xs text-muted-foreground">{d.date}</span>{' '}
+            {d.hasFile && <a href={`/api${base}/${d.id}/file`} target="_blank" rel="noreferrer" className="text-xs text-accent underline">Open file</a>}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -203,6 +231,37 @@ export default function EntryPanel({ entry, onClose, onChanged, onLinksChanged, 
   };
 
   if (refunding) return <RefundEntry entry={entry} onClose={() => setRefunding(false)} onSaved={onChanged} />;
+
+  if (!canEdit && !isNew) {
+    const fund = funds.find(x => x.id === entry.fundId);
+    const cat = categories.find(c => c.id === entry.categoryId);
+    return (
+      <RecordView
+        title="Entry"
+        headline={<Amount minor={entry.amount} currency={entry.currency} tone={entry.direction} />}
+        chips={[
+          entry.direction === 'cr' ? 'Credit' : 'Debit',
+          entry.exclude && 'Excluded from totals',
+          entryClosed && `\u{1F512} Closed year ${entry.date.slice(0, 4)}`,
+          linked && '\u2194 Linked transfer',
+        ]}
+        rows={[
+          { label: 'Date', value: entry.date },
+          { label: 'Fund', value: fund ? `${fund.name} (${curLabel(fund.currency)})` : '' },
+          { label: 'Category', value: cat?.name },
+          { label: 'Project', value: entry.projectId ? projectNames[entry.projectId]?.name : '' },
+          { label: 'Party', value: entry.partyName },
+          { label: 'Quantity', value: entryQP.quantityText },
+          { label: 'Unit price', value: entryQP.unitPriceText },
+          { label: 'Rate %', value: entry.rate == null ? '' : String(entry.rate) },
+          { label: 'Comment', value: entry.comment, wide: true },
+        ]}
+        onClose={onClose}
+      >
+        {can('documents') && <EntryDocumentsView bookId={book.id} entryId={entry.id} />}
+      </RecordView>
+    );
+  }
 
   return (
     <>

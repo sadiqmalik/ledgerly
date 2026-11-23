@@ -115,7 +115,7 @@ export default function LedgerScreen() {
         <div className="min-w-0">
           <div className="card p-0">
             <div className="p-3">
-              {data ? <EntryTable rows={data.rows} openings={openings} openingCaption={openingCaption(filters)} onSelect={canEdit ? setSelected : undefined} selection={selection} /> : !error && <Skeleton />}
+              {data ? <EntryTable rows={data.rows} openings={openings} openingCaption={openingCaption(filters)} onSelect={setSelected} selection={selection} /> : !error && <Skeleton />}
             </div>
           </div>
           <BulkBar rows={data?.rows || []} selection={selection} onDone={notifyChanged} showProject />
@@ -139,7 +139,7 @@ export default function LedgerScreen() {
       {draft && canEdit && (
         <EntryPanel entry={draft} onClose={() => setDraft(null)} onChanged={() => { setDraft(null); notifyChanged(); }} />
       )}
-      {selected && canEdit && (
+      {selected && (
         <EntryPanel entry={selected} onClose={() => setSelected(null)}
           onChanged={() => { setSelected(null); notifyChanged(); }} onLinksChanged={notifyChanged}
           onDuplicate={e => { setSelected(null); setDraft({ ...e, id: null, linkId: null, date: todayISO(), docCount: 0 }); }} />

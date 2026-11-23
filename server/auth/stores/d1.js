@@ -70,12 +70,22 @@ const toSession = row => ({
   accessCodeId: row.access_code_id ?? null
 });
 
+const parseBookResources = text => {
+  if (!text) return {};
+  try {
+    const v = JSON.parse(text);
+    if (!v || typeof v !== 'object' || Array.isArray(v)) return {};
+    return Object.fromEntries(Object.entries(v).filter(([, list]) => Array.isArray(list) && list.every(key => RESOURCES.includes(key))));
+  } catch { return {}; }
+};
+
 const toAccessCode = row => ({
   id: row.id,
   name: row.name,
   codeHash: row.code_hash,
   bookIds: JSON.parse(row.book_ids || '[]'),
   resources: parseResources(row.resources, { nullable: false }),
+  bookResources: parseBookResources(row.book_resources),
   createdBy: row.created_by,
   createdAt: row.created_at,
   revokedAt: row.revoked_at ?? null,
@@ -203,13 +213,13 @@ const createD1AuthStore = db => {
     },
 
     accessCodes: {
-      async insert({ name, codeHash, bookIds, resources, createdBy, createdAt }) {
+      async insert({ name, codeHash, bookIds, resources, bookResources = {}, createdBy, createdAt }) {
         const id = newId();
         await prep(
-          'INSERT INTO access_codes (id, name, code_hash, book_ids, resources, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-          id, name, codeHash, JSON.stringify(bookIds), JSON.stringify(resources), createdBy, createdAt
+          'INSERT INTO access_codes (id, name, code_hash, book_ids, resources, book_resources, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+          id, name, codeHash, JSON.stringify(bookIds), JSON.stringify(resources), JSON.stringify(bookResources), createdBy, createdAt
         ).run();
-        return { id, name, codeHash, bookIds, resources, createdBy, createdAt, revokedAt: null, lastUsedAt: null };
+        return { id, name, codeHash, bookIds, resources, bookResources, createdBy, createdAt, revokedAt: null, lastUsedAt: null };
       },
 
       async findById(id) {
@@ -273,8 +283,12 @@ const createD1AuthStore = db => {
         return (result.meta && result.meta.changes) || 0;
       },
 
-      async setResources(id, resources) {
-        await prep('UPDATE access_codes SET resources = ? WHERE id = ?', JSON.stringify(resources), String(id)).run();
+      async setResources(id, resources, bookResources = {}, bookIds) {
+        if (bookIds) {
+          await prep('UPDATE access_codes SET resources = ?, book_resources = ?, book_ids = ? WHERE id = ?', JSON.stringify(resources), JSON.stringify(bookResources), JSON.stringify(bookIds), String(id)).run();
+          return;
+        }
+        await prep('UPDATE access_codes SET resources = ?, book_resources = ? WHERE id = ?', JSON.stringify(resources), JSON.stringify(bookResources), String(id)).run();
       },
 
       async touch(id, at) {

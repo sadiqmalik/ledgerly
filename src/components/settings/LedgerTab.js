@@ -1,14 +1,16 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../../services/dataAPI';
 import { useAuth } from '../../auth/AuthContext';
 import { useBooks } from '../../hooks/BooksContext';
 import CurrencySelect from '../common/CurrencySelect';
 import ConfirmDialog from '../common/ConfirmDialog';
 import { errorMessage } from '../common/format';
-import { useResource, Field, inputCls, btnPrimary, btnDanger, btnSecondary, Toggle } from './ui';
+import { useResource, Field, inputCls, btnPrimary, btnSecondary, Toggle } from './ui';
 import { getDefaultLedger, setDefaultLedger } from '../../utils/defaultLedger';
 import CurrencyLabel from '../common/CurrencyLabel';
 import Select from '../common/Select';
+import { hasResource } from '../../auth/resources.mjs';
+import useLoanRegisters from '../loans/useLoanRegisters';
 
 // Compact danger button for the small cards in the Members grid.
 const btnSmDanger = 'rounded-md border border-negative px-2 py-1 text-xs font-medium text-negative hover:bg-muted disabled:opacity-50';
@@ -135,89 +137,64 @@ export function Members({ bookId, selfId }) {
   );
 }
 
-// One box for both directions: deactivate an active ledger, reactivate an inactive one (only a super administrator
-// still sees an inactive ledger, and only they may reactivate it).
-function DeactivateLedger({ book, books, reloadBooks }) {
-  const inactive = book.active === false;
-  const [err, setErr] = useState('');
-  const [confirming, setConfirming] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const toggle = async () => {
-    setErr(''); setBusy(true);
-    try {
-      await api.put(`/books/${book.id}/active`, { active: inactive });
-      if (inactive) await reloadBooks(book.id);
-      else {
-        const next = books.find(b => b.id !== book.id && b.active !== false);
-        await reloadBooks(next?.id);
-      }
-    } catch (ex) {
-      setErr(errorMessage(ex, inactive ? 'Could not reactivate the ledger.' : 'Could not deactivate the ledger.'));
-    } finally {
-      setBusy(false); setConfirming(false);
-    }
-  };
-  const verb = inactive ? 'Reactivate' : 'Deactivate';
-  return (
-    <div className="space-y-3 rounded-xl border border-border bg-card p-4">
-      <h3 className={`font-medium ${inactive ? 'text-foreground' : 'text-negative'}`}>{inactive ? 'Ledger is inactive' : 'Deactivate ledger'}</h3>
-      <p className="text-sm text-muted-foreground">
-        {inactive
-          ? 'This ledger is hidden from everyone except super administrators. Reactivate it to make it available to its members again.'
-          : 'Deactivating hides this ledger from everyone. Nothing is deleted and no data is lost. Only a super administrator can reactivate it.'}
-      </p>
-      {err && <p role="alert" className="text-sm text-negative">{err}</p>}
-      <button type="button" className={inactive ? btnPrimary : btnDanger} onClick={() => setConfirming(true)}>{verb} ledger</button>
-      {confirming && (
-        <ConfirmDialog
-          title={`${verb} ledger?`}
-          message={inactive
-            ? `${book.name} will be available to its members again.`
-            : `${book.name} will be hidden from everyone. No data is deleted; a super administrator can reactivate it.`}
-          confirmLabel={`${verb} ledger`}
-          confirmText={book.name}
-          tone={inactive ? 'default' : 'danger'}
-          busy={busy}
-          onConfirm={toggle}
-          onCancel={() => setConfirming(false)}
-        />
-      )}
-    </div>
-  );
-}
-
-function ReadOnlyDetails({ book }) {
-  return (
-    <div className="space-y-2 rounded-xl border border-border bg-card p-4">
-      <h3 className="font-medium">Details</h3>
-      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
-        <dt className="text-muted-foreground">Name</dt><dd>{book.name}</dd>
-        <dt className="text-muted-foreground">Base currency</dt><dd><CurrencyLabel code={book.baseCurrency} /></dd>
-      </dl>
-    </div>
-  );
-}
-
 // Personal choice: open this ledger first when I sign in (this browser).
-export function DefaultLedger({ bookId }) {
+export function DefaultLedger({ bookId, compact = false }) {
   const { account } = useAuth();
   const id = String(account?.id || '');
   const [isDefault, setIsDefault] = useState(() => getDefaultLedger(id) === bookId);
+  // Only one ledger is the default: every switch re-reads when another one is turned on.
+  useEffect(() => {
+    const sync = () => setIsDefault(getDefaultLedger(id) === bookId);
+    window.addEventListener('ledger:default-changed', sync);
+    return () => window.removeEventListener('ledger:default-changed', sync);
+  }, [id, bookId]);
   if (!id) return null;
-  return <Toggle label="Open this ledger when I sign in" hint="Personal, kept in this browser. Turn it on in another ledger to change it." checked={isDefault} onChange={on => { setDefaultLedger(id, on ? bookId : null); setIsDefault(on); }} />;
+  return <Toggle compact={compact} label="Open when I sign in" hint="Personal, kept in this browser. Turn it on in another ledger to change it." checked={isDefault} onChange={on => { setDefaultLedger(id, on ? bookId : null); setIsDefault(on); window.dispatchEvent(new Event('ledger:default-changed')); }} />;
 }
 
-// Settings > Details: this ledger's name, base currency and the deactivate switch.
-export function DetailsTab({ bookId, canEdit }) {
-  const { books, reloadBooks } = useBooks();
+const count = r => (Array.isArray(r.data) ? r.data.length : null);
+
+// Settings > Details: a read-only summary of this ledger. Editing, Active, the sign-in default and the switcher list are
+// on the Administration page (super administrators).
+export function DetailsTab({ bookId }) {
+  const { books } = useBooks();
+  const { account } = useAuth();
+  const { registers } = useLoanRegisters();
   const book = books.find(b => b.id === bookId);
+  const [counts, setCounts] = useState(null);
+  useEffect(() => {
+    let live = true;
+    setCounts(null);
+    const one = (key, can) => (can ? api.get(`/books/${bookId}/${key}`).then(count).catch(() => null) : Promise.resolve(null));
+    Promise.all([
+      one('projects', hasResource(account, 'projects')),
+      one('documents', hasResource(account, 'documents')),
+      one('items', hasResource(account, 'items')),
+    ]).then(([projects, documents, items]) => { if (live) setCounts({ projects, documents, items }); });
+    return () => { live = false; };
+  }, [bookId, account]);
   if (!book) return null;
-  if (!canEdit) return <div className="max-w-xl space-y-4"><ReadOnlyDetails book={book} /><DefaultLedger key={book.id} bookId={book.id} /></div>;
+  const isDefault = getDefaultLedger(String(account?.id || '')) === book.id;
+  const loans = hasResource(account, 'loans') && registers ? registers.filter(r => !r.bookId || r.bookId === book.id).length : null;
+  const facts = [
+    ['Name', book.name],
+    ['Base currency', <CurrencyLabel key="c" code={book.baseCurrency} />],
+    ['Status', book.active === false ? 'Inactive' : 'Active'],
+    ['Opens at sign-in', isDefault ? 'Yes' : 'No'],
+    ['Projects', counts?.projects], ['Loans', loans], ['Documents', counts?.documents], ['Items', counts?.items],
+  ].filter(([, v]) => v !== null && v !== undefined && v !== '');
   return (
-    <div className="grid w-full grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,28rem)_minmax(0,28rem)]">
-      <div className="lg:col-span-2 max-w-md"><DefaultLedger key={book.id} bookId={book.id} /></div>
-      <Details key={`${book.id}:${book.name}:${book.baseCurrency}`} book={book} reloadBooks={reloadBooks} />
-      <DeactivateLedger key={book.id} book={book} books={books} reloadBooks={reloadBooks} />
+    <div className="max-w-xl space-y-3 rounded-xl border border-border bg-card p-4">
+      <h3 className="font-medium">Details</h3>
+      <dl className="grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-2">
+        {facts.map(([label, value]) => (
+          <div key={label} className="rounded-lg border border-border bg-background px-3 py-2">
+            <dt className="text-xs text-muted-foreground">{label}</dt>
+            <dd className="truncate text-sm font-medium">{value}</dd>
+          </div>
+        ))}
+      </dl>
+      {account?.isSuperAdmin && <p className="text-xs text-muted-foreground">To rename this ledger, change its currency, switch it off, make it the sign-in default or hide it from the switcher, use Administration &gt; All ledgers.</p>}
     </div>
   );
 }

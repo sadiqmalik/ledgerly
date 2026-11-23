@@ -1,12 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import dataAPI from '../../services/dataAPI';
 import { useBooks } from '../../hooks/BooksContext';
-import ResourcePicker, { pagesText } from './ResourcePicker';
+import { LedgerPages, pagesText } from './ResourcePicker';
 import { DEFAULT_CODE_RESOURCES } from '../../auth/resources.mjs';
 import { errorText, inputCls, btnPrimary, btnSecondary, btnDanger, Badge, ToggleGrid } from '../settings/ui';
 import Modal from '../common/Modal';
 import ConfirmDialog from '../common/ConfirmDialog';
 import PromptDialog from '../common/PromptDialog';
+
+// { bookId: [pages] } for every chosen ledger: the edited list, else the usual pages.
+const explicitPages = (map = {}, bookIds = [], seed = []) => Object.fromEntries(bookIds.map(id => [id, Array.isArray(map[id]) ? map[id] : seed]));
 
 const when = iso => (iso ? new Date(iso).toLocaleString() : '—');
 
@@ -18,6 +21,7 @@ export default function AccessCodesPanel() {
   const [code, setCode] = useState('');
   const [selected, setSelected] = useState([]);
   const [pages, setPages] = useState([...DEFAULT_CODE_RESOURCES]);
+  const [bookPages, setBookPages] = useState({}); // own pages per ledger, for the code being created
   const [editing, setEditing] = useState(null); // { id, name, bookIds, pages }
   const [creating, setCreating] = useState(false);
   const [created, setCreated] = useState(null);
@@ -46,10 +50,11 @@ export default function AccessCodesPanel() {
     setError('');
     setBusy(true);
     try {
-      setCreated(await dataAPI.createAccessCode(name, selected, code, pages));
+      setCreated(await dataAPI.createAccessCode(name, selected, code, pages, explicitPages(bookPages, selected, pages)));
       setName('');
       setCode('');
       setSelected([]);
+      setBookPages({});
       setPages([...DEFAULT_CODE_RESOURCES]);
       setCreating(false);
       load();
@@ -81,7 +86,7 @@ export default function AccessCodesPanel() {
     setError('');
     setBusy(true);
     try {
-      await dataAPI.setAccessCodeResources(editing.id, editing.pages);
+      await dataAPI.setAccessCodeResources(editing.id, editing.pages, explicitPages(editing.bookPages, editing.bookIds, editing.pages), editing.bookIds);
       setEditing(null);
       load();
     } catch (err) {
@@ -149,12 +154,15 @@ export default function AccessCodesPanel() {
             </p>
             <dl className="mt-2 space-y-1 text-sm">
               <div className="flex gap-2"><dt className="w-20 shrink-0 text-muted-foreground">Ledgers</dt><dd className="min-w-0">{c.bookIds.map(bookName).join(', ') || 'None'}</dd></div>
-              <div className="flex gap-2"><dt className="w-20 shrink-0 text-muted-foreground">Pages</dt><dd className="min-w-0">{pagesText(c.resources || [])}</dd></div>
+              {!Object.keys(c.bookResources || {}).length && <div className="flex gap-2"><dt className="w-20 shrink-0 text-muted-foreground">Pages</dt><dd className="min-w-0">{pagesText(c.resources || [])}</dd></div>}
+              {Object.entries(c.bookResources || {}).map(([id, list]) => (
+                <div key={id} className="flex gap-2"><dt className="w-20 shrink-0 truncate text-muted-foreground" title={bookName(id)}>{bookName(id)}</dt><dd className="min-w-0">{pagesText(list)}</dd></div>
+              ))}
               <div className="flex gap-2"><dt className="w-20 shrink-0 text-muted-foreground">Created</dt><dd className="min-w-0">{when(c.createdAt)} by {c.createdBy}</dd></div>
               <div className="flex gap-2"><dt className="w-20 shrink-0 text-muted-foreground">Last used</dt><dd className="min-w-0">{when(c.lastUsedAt)}</dd></div>
             </dl>
             <div className="mt-auto flex flex-wrap gap-2 pt-3">
-              {!c.revokedAt && <button type="button" className={btnSecondary} onClick={() => { setError(''); setEditing({ id: c.id, name: c.name, bookIds: c.bookIds, pages: c.resources || [] }); }}>Edit</button>}
+              {!c.revokedAt && <button type="button" className={btnSecondary} onClick={() => { setError(''); setEditing({ id: c.id, name: c.name, bookIds: c.bookIds, pages: c.resources || [], bookPages: c.bookResources || {} }); }}>Edit</button>}
               {!c.revokedAt && <button type="button" className={btnSecondary} onClick={() => reset(c)}>Reset code</button>}
               {!c.revokedAt && <button type="button" className={btnDanger} onClick={() => revoke(c)}>Revoke</button>}
               {c.revokedAt && <button type="button" className={btnPrimary} onClick={() => restore(c)}>Restore</button>}
@@ -181,8 +189,9 @@ export default function AccessCodesPanel() {
               </label>
             </div>
             <p className="-mt-2 text-xs text-muted-foreground">8-64 characters, case-sensitive, for example family-view-2026. It is shown once, after you create it.</p>
-            <ToggleGrid legend="Ledgers (view only)" options={books.map(b => ({ value: b.id, label: b.name }))} value={selected} onChange={setSelected} disabled={busy} />
-            <ResourcePicker forCode value={pages} onChange={setPages} disabled={busy} />
+            <p className="text-sm font-medium text-foreground">Ledgers and pages (view only)</p>
+            <LedgerPages forCode books={books} selected={selected} onSelect={setSelected} disabled={busy}
+              pagesOf={id => bookPages[id] ?? pages} onPages={(id, v) => setBookPages(p => ({ ...p, [id]: v }))} />
             <div className="flex flex-wrap gap-2">
               <button type="submit" className={btnPrimary} disabled={busy || !name.trim() || selected.length === 0}>{busy ? 'Creating...' : 'Create access code'}</button>
               <button type="button" className={btnSecondary} onClick={() => setCreating(false)} disabled={busy}>Cancel</button>
@@ -191,14 +200,23 @@ export default function AccessCodesPanel() {
         </Modal>
       )}
       {editing && (
-        <Modal title="Edit access code" onClose={() => setEditing(null)} wide>
+        <Modal title="Edit access code" onClose={() => setEditing(null)} wide bare>
           <div className="space-y-4">
             {error && <p role="alert" className="text-sm text-negative">{error}</p>}
-            <p className="text-sm"><span className="font-semibold text-foreground">{editing.name}</span>
-              <span className="text-muted-foreground"> · ledgers: {editing.bookIds.map(bookName).join(', ') || 'None'}</span></p>
-            <ResourcePicker forCode value={editing.pages} onChange={next => setEditing(e => ({ ...e, pages: next }))} disabled={busy} />
+            <div className="flex items-start justify-between gap-3 rounded-xl border border-border bg-muted/30 px-4 py-3">
+              <div className="min-w-0">
+                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Edit access code</div>
+                <h3 className="mt-0.5 break-words text-xl font-semibold text-foreground" style={{ margin: 0 }}>{editing.name}</h3>
+              </div>
+              <button type="button" aria-label="Close" onClick={() => setEditing(null)} className="btn shrink-0 px-2 py-1">&times;</button>
+            </div>
+            <p className="text-sm font-medium text-foreground">Ledgers and pages (view only)</p>
+            <LedgerPages forCode books={books} selected={editing.bookIds} disabled={busy}
+              onSelect={next => setEditing(e => ({ ...e, bookIds: next }))}
+              pagesOf={id => editing.bookPages[id] ?? editing.pages}
+              onPages={(id, v) => setEditing(e => ({ ...e, bookPages: { ...e.bookPages, [id]: v } }))} />
             <div className="flex flex-wrap gap-2">
-              <button type="button" className={btnPrimary} disabled={busy} onClick={savePages}>{busy ? 'Saving...' : 'Save'}</button>
+              <button type="button" className={btnPrimary} disabled={busy || editing.bookIds.length === 0} onClick={savePages}>{busy ? 'Saving...' : 'Save'}</button>
               <button type="button" className={btnSecondary} disabled={busy} onClick={() => setEditing(null)}>Cancel</button>
             </div>
           </div>

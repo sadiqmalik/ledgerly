@@ -209,12 +209,12 @@ export default function RegisterPage({ registerId }) {
           <>
             <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card" style={{ listStyle: 'none' }}>
               {shown.map(r => {
-                const open = () => { if (writable) setEntryDlg({ entry: r }); };
+                const open = () => setEntryDlg({ entry: r });
                 const who = [r.lender && `${r.kind === 'returned' ? 'Repaid to' : 'From'} ${r.lender}`, r.receiver && (r.receiver !== r.lender) && `Received by ${r.receiver}`].filter(Boolean);
                 return (
-                  <li key={r.id} className={`flex min-w-0 items-center gap-3 px-3 py-1.5 text-sm ${writable ? 'cursor-pointer hover:bg-muted/40' : ''}`}
-                    onClick={open} tabIndex={writable ? 0 : undefined}
-                    onKeyDown={ev => { if (writable && (ev.key === 'Enter' || ev.key === ' ')) { ev.preventDefault(); open(); } }}>
+                  <li key={r.id} className={`flex min-w-0 items-center gap-3 px-3 py-1.5 text-sm cursor-pointer hover:bg-muted/40`}
+                    onClick={open} tabIndex={0}
+                    onKeyDown={ev => { if ((ev.key === 'Enter' || ev.key === ' ')) { ev.preventDefault(); open(); } }}>
                     <div className="w-[4.75rem] shrink-0 whitespace-nowrap text-xs text-muted-foreground">{r.date}</div>
                     <div className="min-w-0 flex-1">
                       <div className="truncate font-medium text-foreground" title={r.comment || undefined}>
@@ -239,13 +239,13 @@ export default function RegisterPage({ registerId }) {
       </div>
 
       {entryDlg && (
-        <EntryDialog register={reg} entry={entryDlg.entry} copyOf={entryDlg.copy} receivers={receiverNames} onClose={() => setEntryDlg(null)}
+        <EntryDialog readOnly={!writable} register={reg} entry={entryDlg.entry} copyOf={entryDlg.copy} receivers={receiverNames} onClose={() => setEntryDlg(null)}
           onSaved={() => { setEntryDlg(null); refresh(); }}
           onDuplicate={() => setEntryDlg({ entry: null, copy: entryDlg.entry })}
           onDelete={entryDlg.entry ? () => { setConfirm({ type: 'entry', entry: entryDlg.entry }); } : undefined} />
       )}
       {dupReg && <RegisterDialog copyOf={reg} onClose={() => setDupReg(false)} onSaved={r => { setDupReg(false); window.location.hash = `#/loans/${r.id}`; }} />}
-      {editReg && <RegisterDialog register={reg} onClose={() => setEditReg(false)} onSaved={() => { setEditReg(false); refresh(); }} />}
+      {editReg && <RegisterDialog readOnly={!canEdit(reg.role)} register={reg} onClose={() => setEditReg(false)} onSaved={() => { setEditReg(false); refresh(); }} />}
       {confirm && confirm.type === 'settle' && (
         <ConfirmDialog title="Mark loan as settled" message={`Mark "${reg.name}" as settled? Its entries become read only until you reopen it.`}
           confirmLabel="Mark as settled" busy={busy} onConfirm={() => setSettled(true)} onCancel={() => setConfirm(null)} />

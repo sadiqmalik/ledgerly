@@ -5,7 +5,7 @@
 //  - not linked: only the super administrator who owns it can open it (not even another super administrator).
 // Access codes never reach it. A notebook the account cannot use answers 404, so its existence is not revealed.
 const { z, parse, isoDate, id, notFound, flag } = require('./validate');
-const { hasResource } = require('../../server/auth/resources');
+const { hasResource, hasResourceAnywhere, forBook } = require('../../server/auth/resources');
 const { RANK, roleFor } = require('../../server/auth/roles');
 const { ConflictError, ForbiddenError, AppError } = require('../../server/errors');
 
@@ -74,14 +74,14 @@ const registerDiaryRoutes = (app, { repo }) => {
     const account = c.get('account');
     if (!account || !account.id) throw new ForbiddenError('The Notebook is private');
     if (account.accessCode && c.req.method !== 'GET') throw new ForbiddenError('Access codes are view only');
-    if (!account.isSuperAdmin && !hasResource(account, 'diary')) throw new ForbiddenError('This account cannot use the Notebook');
+    if (!account.isSuperAdmin && !hasResourceAnywhere(account, 'diary')) throw new ForbiddenError('This account cannot use the Notebook');
     return account;
   };
   // What this account may do with a notebook row, or null when it may not open it at all.
   const rights = (account, nb) => {
     if (!nb.book_id) return account.isSuperAdmin && nb.owner_id === account.id ? { canEdit: true, isOwner: true, canDelete: true, canRelink: true } : null;
     const role = roleFor(account, nb.book_id);
-    if (!role) return null;
+    if (!role || (!account.isSuperAdmin && !hasResource(forBook(account, nb.book_id), 'diary'))) return null;
     if (account.accessCode) return { canEdit: false, isOwner: false, canDelete: false, canRelink: false };
     const isOwner = nb.owner_id === account.id;
     return { canEdit: RANK[role] >= RANK.editor, isOwner, canDelete: isOwner || role === 'admin', canRelink: account.isSuperAdmin && isOwner };

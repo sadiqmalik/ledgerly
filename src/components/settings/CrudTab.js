@@ -4,7 +4,7 @@ import { api } from '../../services/dataAPI';
 import { useLedger } from '../../hooks/LedgerContext';
 import ConfirmDialog from '../common/ConfirmDialog';
 import { useAuth } from '../../auth/AuthContext';
-import { hasResource } from '../../auth/resources.mjs';
+import { hasResource, forBook } from '../../auth/resources.mjs';
 import { useResource, useEntryCounts, EntryCount, errorText, btnPrimary, btnSecondary, btnDanger, Toggle, Badge } from './ui';
 import { useListView } from '../../hooks/useListView';
 import Stamp from '../common/Stamp';
@@ -28,7 +28,7 @@ export default function CrudTab({
   const list = useResource(base, { all: showArchivedToggle });
   const allRows = list.data;
   const counts = useEntryCounts(bookId, countKey, list.loading);
-  const canLink = hasResource(account, 'ledger');
+  const canLink = hasResource(forBook(account, bookId), 'ledger');
   const showCounts = !!counts && !!countKey;
   const countOf = row => (
     <EntryCount n={counts?.[row.id] || 0} noun={countNoun} name={nameOf(row)}

@@ -33,6 +33,33 @@ describe('access codes', () => {
     assert.equal((await (await mk()).get('/api/diary/notebooks')).status, 403);
   });
 
+  it('can give a ledger its own pages instead of the global ones', async () => {
+    const made = await ctx.api.post('/api/admin/access-codes').send({
+      name: 'Split', bookIds: [BOOK], resources: ['ledger'], bookResources: { [BOOK]: ['items'], other: ['documents'] }
+    });
+    assert.equal(made.status, 201);
+    assert.deepEqual(made.body.accessCode.bookResources, { [BOOK]: ['items'] }); // unknown ledgers are dropped
+    const api = cookieOf(await signIn(made.body.accessCode.code, '10.0.0.7'));
+    assert.equal((await api.get(`${base}/items`)).status, 200);
+    assert.equal((await api.get(`${base}/entries`)).status, 403);
+    const changed = await ctx.api.put(`/api/admin/access-codes/${made.body.accessCode.id}/resources`).send({ resources: ['ledger'], bookResources: {} });
+    assert.equal(changed.status, 200);
+    assert.equal((await api.get(`${base}/entries`)).status, 200);
+    assert.equal((await api.get(`${base}/items`)).status, 403);
+  });
+
+  it('can change which ledgers a code opens', async () => {
+    const code = await createCode([BOOK]);
+    const api = cookieOf(await signIn(code.code, '10.0.0.8'));
+    const changed = await ctx.api.put(`/api/admin/access-codes/${code.id}/resources`).send({ resources: code.resources, bookIds: ['personal'] });
+    assert.equal(changed.status, 200);
+    assert.deepEqual(changed.body.accessCode.bookIds, ['personal']);
+    assert.equal((await api.get(`${base}/items`)).status, 403);
+    assert.equal((await api.get('/api/books/personal/items')).status, 200);
+    const bad = await ctx.api.put(`/api/admin/access-codes/${code.id}/resources`).send({ resources: code.resources, bookIds: ['nope'] });
+    assert.equal(bad.status, 400);
+  });
+
   it('signs in with a code and gets viewer access to the named book only', async () => {
     const created = await createCode();
     const res = await signIn(created.code);

@@ -4,7 +4,7 @@ const { normalizeEmail } = require('./accounts');
 const { RESOURCES, effectiveResources, normalizeResources } = require('./resources');
 
 const ROLES = ['viewer', 'editor', 'admin'];
-const membership = z.object({ bookId: z.string().min(1).max(64), role: z.enum(ROLES) });
+const membership = z.object({ bookId: z.string().min(1).max(64), role: z.enum(ROLES), resources: z.array(z.enum(RESOURCES)).max(RESOURCES.length).optional() });
 
 const loanMembership = z.object({ registerId: z.string().min(1).max(64), role: z.enum(ROLES) });
 
@@ -35,6 +35,14 @@ const parse = (schema, body) => {
     throw new ValidationError(`${issue.path.join('.') || 'request'}: ${issue.message}`);
   }
   return result.data;
+};
+
+// With a page list on every ledger, the account's global list is just their union (plus Loans when it has loan access):
+// it only decides what shows before a ledger is open. undefined when some ledger still uses the global list.
+const derivedPages = (memberships = [], loanMemberships = []) => {
+  if (memberships.length === 0 && loanMemberships.length === 0) return undefined; // nothing to derive from
+  if (!memberships.every(m => Array.isArray(m.resources))) return undefined;
+  return normalizeResources([...memberships.flatMap(m => m.resources), ...(loanMemberships.length ? ['loans'] : [])]);
 };
 
 // Account administration for super administrators. Every change is written to accountLog.
@@ -93,7 +101,7 @@ const createAccountAdmin = (store, { accounts, auth }) => {
   });
 
   const withRole = (account, bookId, role) => [
-    ...(account.memberships || []).filter(m => m.bookId !== bookId), { bookId, role }
+    ...(account.memberships || []).filter(m => m.bookId !== bookId), { ...(account.memberships || []).find(m => m.bookId === bookId), bookId, role }
   ];
 
   return {
@@ -149,7 +157,7 @@ const createAccountAdmin = (store, { accounts, auth }) => {
         isSuperAdmin: isSuper,
         memberships: data.memberships,
         loanMemberships: data.loanMemberships,
-        resources: Array.isArray(data.resources) ? normalizeResources(data.resources) : null
+        resources: derivedPages(data.memberships, data.loanMemberships) ?? (Array.isArray(data.resources) ? normalizeResources(data.resources) : null)
       });
       await recordEvent(actor, 'create', normalizeEmail(data.email), { memberships: data.memberships, loanMemberships: data.loanMemberships, resources: data.resources ?? null });
       return toView(await findAccount(account.id));
@@ -183,7 +191,8 @@ const createAccountAdmin = (store, { accounts, auth }) => {
       const data = parse(schemas.memberships, body);
       const account = await findAccount(id);
       await checkBooks(data.memberships);
-      await store.accounts.update(account.id, { memberships: data.memberships, updatedAt: new Date().toISOString() });
+      const derived = derivedPages(data.memberships, account.loanMemberships);
+      await store.accounts.update(account.id, { memberships: data.memberships, ...(derived ? { resources: derived } : {}), updatedAt: new Date().toISOString() });
       await recordEvent(actor, 'memberships', account.email, { memberships: data.memberships });
       return toView(await findAccount(account.id));
     },
@@ -192,7 +201,8 @@ const createAccountAdmin = (store, { accounts, auth }) => {
       const data = parse(schemas.loanMemberships, body);
       const account = await findAccount(id);
       await checkRegisters(data.loanMemberships);
-      await store.accounts.update(account.id, { loanMemberships: data.loanMemberships, updatedAt: new Date().toISOString() });
+      const derived = derivedPages(account.memberships, data.loanMemberships);
+      await store.accounts.update(account.id, { loanMemberships: data.loanMemberships, ...(derived ? { resources: derived } : {}), updatedAt: new Date().toISOString() });
       await recordEvent(actor, 'loan-memberships', account.email, { loanMemberships: data.loanMemberships });
       return toView(await findAccount(account.id));
     },

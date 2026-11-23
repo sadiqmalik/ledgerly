@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { decideRoute, hasResource } from './auth/resources.mjs';
+import { decideRoute, hasResource, forBook } from './auth/resources.mjs';
 import dataAPI from './services/dataAPI';
 import AppShell from './layout/AppShell';
 import Dashboard from './components/Dashboard';
@@ -18,7 +18,7 @@ import { LedgerProvider, useLedger } from './hooks/LedgerContext';
 import useHashRoute from './hooks/useHashRoute';
 import { BooksContext } from './hooks/BooksContext';
 import { readLocal, writeLocal } from './components/common/format';
-import { takeDefaultLedger } from './utils/defaultLedger';
+import { takeDefaultLedger, takeFirstLanding } from './utils/defaultLedger';
 import AppearanceSync from './components/common/AppearanceSync';
 
 const BOOK_KEY = 'ledger.book';
@@ -30,7 +30,7 @@ function Screens() {
   const route = useHashRoute();
   const { book, role, quickAdd, closeQuickAdd, canQuickAdd, profitOpen, closeProfit } = useLedger();
   const { account } = useAuth();
-  const decision = decideRoute(route, account);
+  const decision = decideRoute(route, forBook(account, book?.id));
 
   // A route the account may not use is replaced by the first page it may use.
   useEffect(() => {
@@ -94,6 +94,11 @@ function App() {
 
   useEffect(() => { reloadBooks(account?.id ? takeDefaultLedger(String(account.id)) || undefined : undefined); }, [reloadBooks]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Signing in always opens the Dashboard (a hash left over from an earlier visit, such as #/diary, is dropped).
+  useEffect(() => {
+    if (account?.id && takeFirstLanding(String(account.id)) && !isLoansRoute(window.location.hash.replace(/^#/, '')) && hasResource(account, 'dashboard')) window.location.replace('#/');
+  }, [account?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => { if (bookId) writeLocal(BOOK_KEY, bookId); }, [bookId]);
 
   // Switching books starts the ledger with fresh filters.
@@ -109,7 +114,7 @@ function App() {
   const ctx = useMemo(() => ({ books: books || [], book, reloadBooks, selectBook }), [books, book, reloadBooks, selectBook]);
 
   // Any route the account may not open (any page, with or without a ledger) goes to its first allowed page, normally home.
-  const guard = decideRoute(route, account);
+  const guard = decideRoute(route, forBook(account, book?.id));
   useEffect(() => {
     if (account && !guard.allowed && guard.redirect) window.location.replace(`#${guard.redirect}`);
   }, [account, guard.allowed, guard.redirect]);

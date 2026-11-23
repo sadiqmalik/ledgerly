@@ -22,6 +22,16 @@ export const takeDefaultLedger = accountId => {
   return getDefaultLedger(accountId);
 };
 
+// True once per browser session after sign-in: the app then opens on the Dashboard instead of a stale page.
+const LANDED = 'ledger.landed';
+export const takeFirstLanding = accountId => {
+  try {
+    if (window.sessionStorage.getItem(LANDED) === accountId) return false;
+    window.sessionStorage.setItem(LANDED, accountId);
+    return true;
+  } catch { return false; }
+};
+
 export const clearDefaultApplied = () => {
-  try { window.sessionStorage.removeItem(APPLIED); } catch { /* ignore */ }
+  try { window.sessionStorage.removeItem(APPLIED); window.sessionStorage.removeItem(LANDED); } catch { /* ignore */ }
 };

@@ -3,7 +3,7 @@ const { summary } = require('../../server/domain');
 const { makeTransfer } = require('../../server/domain');
 const { entryPricing, validQuantity } = require('../../server/domain/entryPricing');
 const { AppError, ForbiddenError, ValidationError } = require('../../server/errors');
-const { hasResource } = require('../../server/auth/resources');
+const { hasResource, forBook } = require('../../server/auth/resources');
 const { MAX_MINOR, z, parse, isoDate, money, flag, id, need, notFound, assertOpen } = require('./validate');
 
 // A comma-separated list (OR within a filter). Empty means "not set".
@@ -118,7 +118,7 @@ const registerLedgerRoutes = (app, { repo }) => {
   app.get(`${base}/entries`, async c => {
     const f = parse(listQuery, c.req.query());
     // Without the Ledger page, only an explicit list of real project ids may be read.
-    if (!hasResource(c.get('account'), 'ledger') && (!f.project || f.project.length === 0 || f.project.includes('none'))) {
+    if (!hasResource(forBook(c.get('account'), c.req.param('b')), 'ledger') && (!f.project || f.project.length === 0 || f.project.includes('none'))) {
       throw new ForbiddenError('This account cannot use that page');
     }
     return c.json(await L.listEntries(c.req.param('b'), f));
@@ -127,7 +127,7 @@ const registerLedgerRoutes = (app, { repo }) => {
   // Without the Ledger page, the Projects page may only change entries that belong to a project.
   // Linked transfer legs are never touched without it: the other leg may be outside any project.
   const projectOnly = (c, projectId, linked = false) => {
-    if (!hasResource(c.get('account'), 'ledger') && (!projectId || linked)) throw new ForbiddenError('This account cannot use that page');
+    if (!hasResource(forBook(c.get('account'), c.req.param('b')), 'ledger') && (!projectId || linked)) throw new ForbiddenError('This account cannot use that page');
   };
 
   app.post(`${base}/entries`, async c => {
@@ -179,7 +179,7 @@ const registerLedgerRoutes = (app, { repo }) => {
       }
       if (ch.partyId !== undefined || ch.partyName !== undefined) party = await resolveParty(b, ch);
     }
-    if (!hasResource(c.get('account'), 'ledger')) {
+    if (!hasResource(forBook(c.get('account'), c.req.param('b')), 'ledger')) {
       for (const o of olds) projectOnly(c, o.project_id);
       if (ch.projectId === null) projectOnly(c, null);
     }

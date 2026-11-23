@@ -10,6 +10,8 @@ import QuantityPriceFields from '../common/QuantityPriceFields';
 import { Field, Check, Toggle, SideSwitch, inputCls, btnPrimary, btnSecondary, btnDanger } from '../settings/ui';
 import { amountMinorFromQuantityAndUnitPrice, parseQuantityInput, parseUnitPriceInput, quantityPriceFromEntry, validateQuantityPriceInputs } from '../../utils/entryQuantityPrice.mjs';
 import Select from '../common/Select';
+import RecordView from '../common/RecordView';
+import Amount from '../common/Amount';
 
 // Add (entry == null) or edit/delete one project entry. Errors (423 year closed, ...) show inline.
 export default function EntryForm({ bookId, project, metaKeys, labelOf, categories, entry, copyOf, canEdit, onClose, onSaved, onDuplicate }) {
@@ -100,6 +102,25 @@ export default function EntryForm({ bookId, project, metaKeys, labelOf, categori
 
   const ro = !canEdit || entryClosed;
   if (refunding) return <RefundEntry entry={entry} onClose={() => setRefunding(false)} onSaved={onSaved} />;
+
+  if (editing && ro) {
+    const catName = categories.find(c => c.id === entry.categoryId)?.name;
+    const rows = [
+      { label: 'Date', value: entry.date },
+      { label: 'Category', value: catName },
+      ...metaKeys.map(k => ({ label: labelOf(k), value: (entry.meta || {})[k] })),
+      { label: 'Party', value: entry.partyName },
+      { label: 'Status', value: entry.status },
+      { label: 'Paid date', value: entry.status === 'paid' ? entry.paidDate : '' },
+      { label: 'Comment', value: entry.comment, wide: true },
+    ];
+    return (
+      <RecordView title="Entry" onClose={onClose}
+        headline={<Amount currency={entry.currency || cur} minor={entry.amount} tone={entry.direction} />}
+        chips={[entry.direction === 'cr' ? 'Credit' : 'Debit', entry.exclude && 'Excluded from totals', entryClosed && 'Closed year']}
+        rows={rows} />
+    );
+  }
 
   return (
     <>

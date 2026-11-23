@@ -9,11 +9,12 @@ import { useCurrencies } from '../../hooks/CurrencyContext';
 import { notifyLoansChanged, useLoanNames } from './useLoanRegisters';
 import { canAdmin } from './shared';
 import Select from '../common/Select';
+import RecordView from '../common/RecordView';
 import { useBooks } from '../../hooks/BooksContext';
 
 // Create (register null) or edit a register. The currency is locked once entries exist.
 // A loan admin of an existing register also chooses which access codes may view it (view-only).
-export default function RegisterDialog({ register, copyOf, onClose, onSaved }) {
+export default function RegisterDialog({ register, copyOf, onClose, onSaved, readOnly = false }) {
   const locked = Boolean(register && register.totals?.count > 0);
   const { books, book: openBook } = useBooks();
   const names = useLoanNames();
@@ -68,6 +69,19 @@ export default function RegisterDialog({ register, copyOf, onClose, onSaved }) {
       onSaved(saved);
     } catch (err) { setError(errorMessage(err)); setBusy(false); }
   };
+
+  if (readOnly && register) {
+    return (
+      <RecordView title="Loan" headline={register.name} chips={[register.settled ? 'Settled' : 'Open']} onClose={onClose}
+        rows={[
+          { label: 'Lender', value: register.lender },
+          { label: 'Borrower', value: register.borrower },
+          { label: 'Currency', value: register.currency },
+          { label: 'Ledger', value: books.find(b => b.id === register.bookId)?.name },
+          { label: 'Description', value: register.description, wide: true }
+        ]} />
+    );
+  }
 
   return (
     <Modal title={register ? 'Edit loan' : copyOf ? 'Duplicate loan' : 'New loan'} onClose={onClose}>

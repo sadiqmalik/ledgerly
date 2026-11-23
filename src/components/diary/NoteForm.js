@@ -3,16 +3,17 @@ import { api } from '../../services/dataAPI';
 import Modal from '../common/Modal';
 import ComboInput from '../common/ComboInput';
 import { errorMessage, todayISO } from '../common/format';
-import { RichTextEditor } from './RichText';
+import { RichText, RichTextEditor } from './RichText';
 import { inputCls, btnPrimary, btnSecondary, Field, Toggle } from '../settings/ui';
 import { asItems } from './shared';
 import Select from '../common/Select';
+import RecordView from '../common/RecordView';
 
 // Create (note null) or edit a diary entry. copyOf pre-fills a duplicate (dated today); presets pre-fill a new
 // one (for example the category and type when adding from a category page).
 // A note is a plain note (message, from, for); an important date is a dated event with a small note that can
 // repeat every year. The category box takes an existing category or a new name, created on save.
-export default function NoteForm({ base, note, copyOf, preset, projects, categories, names, onClose, onSaved }) {
+export default function NoteForm({ base, note, copyOf, preset, projects, categories, names, canEdit = true, onClose, onSaved }) {
   const src = note || copyOf;
   const [f, setF] = useState(() => ({
     kind: src?.kind || preset?.kind || 'note',
@@ -57,6 +58,30 @@ export default function NoteForm({ base, note, copyOf, preset, projects, categor
       onSaved();
     } catch (err) { setError(errorMessage(err)); setBusy(false); }
   };
+
+  if (note && !canEdit) {
+    const project = projects.find(p => p.id === note.projectId)?.name;
+    return (
+      <RecordView title={note.title} onClose={onClose}
+        chips={[note.kind === 'date' && 'Important date', note.repeatYearly && 'Repeats every year']}
+        rows={[
+          { label: 'Date', value: note.date },
+          { label: 'Category', value: note.categoryName },
+          { label: 'Status', value: note.active === false ? 'Disabled' : '' },
+          { label: 'Important', value: note.important ? 'Starred' : '' },
+          { label: 'From', value: note.fromName },
+          { label: 'For', value: note.toName },
+          { label: 'Project', value: project },
+        ]}>
+        {note.message && (
+          <div className="rounded-lg border border-border bg-muted/30 px-3 py-2">
+            <div className="text-xs text-muted-foreground">{note.kind === 'date' ? 'Small note' : 'Message'}</div>
+            <RichText text={note.message} className="text-sm" />
+          </div>
+        )}
+      </RecordView>
+    );
+  }
 
   const verb = note ? 'Edit' : copyOf ? 'Duplicate' : 'New';
   return (

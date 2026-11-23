@@ -2,7 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import dataAPI, { api } from '../services/dataAPI';
 import { useAuth } from '../auth/AuthContext';
 import { roleFor } from '../auth/roles';
-import { canReadLookups, canReadParties, canReadYears, hasResource } from '../auth/resources.mjs';
+import { canReadLookups, canReadParties, canReadYears, hasResource, forBook } from '../auth/resources.mjs';
 
 const LedgerContext = createContext(null);
 
@@ -17,13 +17,14 @@ export function LedgerProvider({ book, children }) {
   const [profitOpen, setProfitOpen] = useState(false); // the separate Profit entry dialog
   const [closedYears, setClosedYears] = useState(() => new Set());
 
+  const pages = forBook(account, book.id); // this ledger's own page list, when it has one
   const role = book.role || roleFor(account, book.id);
   const canEdit = role === 'editor' || role === 'admin';
-  const canLedger = hasResource(account, 'ledger');
+  const canLedger = hasResource(pages, 'ledger');
   const canQuickAdd = canEdit && canLedger;
-  const lookups = canReadLookups(account);
-  const partyLookup = canReadParties(account);
-  const yearsAllowed = canReadYears(account);
+  const lookups = canReadLookups(pages);
+  const partyLookup = canReadParties(pages);
+  const yearsAllowed = canReadYears(pages);
 
   useEffect(() => {
     let cancelled = false;
@@ -74,7 +75,7 @@ export function LedgerProvider({ book, children }) {
   }, [canQuickAdd]);
 
   const value = useMemo(() => ({
-    book, role, canEdit, canQuickAdd, can: key => hasResource(account, key), funds, categories, parties, version, quickAdd, profitOpen, openProfit, closeProfit,
+    book, role, canEdit, canQuickAdd, can: key => hasResource(pages, key), funds, categories, parties, version, quickAdd, profitOpen, openProfit, closeProfit,
     notifyChanged, openQuickAdd, closeQuickAdd, closedYears, isClosedDate, refreshYears,
     fundById: id => funds.find(f => f.id === id)
   }), [book, account, role, canEdit, canQuickAdd, funds, categories, parties, version, quickAdd, profitOpen, openProfit, closeProfit, notifyChanged, openQuickAdd, closeQuickAdd, closedYears, isClosedDate, refreshYears]);

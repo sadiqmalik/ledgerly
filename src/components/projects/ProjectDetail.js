@@ -190,8 +190,8 @@ export default function ProjectDetail({ id }) {
     setConfirmBusy(false);
     setConfirmAction(null);
   };
-  const pick = e => { if (!isClosedDate(e.date)) setEntryDlg({ entry: e }); };
-  const rowCls = e => (isClosedDate(e.date) ? '' : 'cursor-pointer hover:bg-muted/60');
+  const pick = e => setEntryDlg({ entry: e });
+  const rowCls = () => 'cursor-pointer hover:bg-muted/60';
   const lock = e => isClosedDate(e.date) && <LockIcon year={e.date.slice(0, 4)} className="mr-1 align-[-1px]" />;
 
   const memo = fund?.kind === 'memo';
@@ -312,7 +312,7 @@ export default function ProjectDetail({ id }) {
         <ChipScopeContext.Provider value={chipScope}>
           <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card" style={{ listStyle: 'none' }}>
             {filtered.map(e => (
-              <li key={e.id} style={currencyRowStyle(e.currency, book.baseCurrency)} tabIndex={isClosedDate(e.date) ? undefined : 0} onClick={() => pick(e)} onKeyDown={ev => { if (ev.key === 'Enter') pick(e); }}
+              <li key={e.id} style={currencyRowStyle(e.currency, book.baseCurrency)} tabIndex={0} onClick={() => pick(e)} onKeyDown={ev => { if (ev.key === 'Enter') pick(e); }}
                 className={`flex min-w-0 items-center gap-3 px-3 py-1.5 text-sm sm:gap-3 ${rowCls(e)} ${e.exclude ? 'opacity-50' : ''} ${selection.isSelected(e.id) ? 'bg-accent/10' : ''}`}>
                 {canEdit && (
                   <input type="checkbox" aria-label="Select entry" checked={selection.isSelected(e.id)} onChange={() => selection.toggle(e.id)}

@@ -37,6 +37,17 @@ const effectiveResources = account => {
   return account.accessCode ? [...DEFAULT_CODE_RESOURCES] : [...DEFAULT_ALL_RESOURCES];
 };
 
+// The same account as seen inside one book: a membership (or an access code's book entry) with its own page list uses
+// that list there instead of the global one. Every check above then works unchanged on the result.
+const forBook = (account, bookId) => {
+  if (!account || account.isSuperAdmin) return account;
+  const m = (account.memberships || []).find(x => x.bookId === bookId);
+  return m && Array.isArray(m.resources) ? { ...account, resources: m.resources } : account;
+};
+// True when some book gives this page even though the global list may not (used before a book is known).
+const hasResourceAnywhere = (account, key) => hasResource(account, key)
+  || (account?.memberships || []).some(m => hasResource(forBook(account, m.bookId), key));
+
 const hasResource = (account, key) => effectiveResources(account).includes(key);
 const hasAnyResource = (account, keys) => {
   const have = effectiveResources(account);
@@ -78,5 +89,5 @@ const requiredResources = (method, rest, query = {}) => {
 
 module.exports = {
   RESOURCES, CODE_RESOURCES, OPT_IN_RESOURCES, DEFAULT_ALL_RESOURCES, DEFAULT_CODE_RESOURCES, LOOKUP_READERS, PARTY_READERS, PROJECT_NAME_READERS,
-  isResource, normalizeResources, normalizeCodeResources, effectiveResources, hasResource, hasAnyResource, requiredResources
+  forBook, hasResourceAnywhere, isResource, normalizeResources, normalizeCodeResources, effectiveResources, hasResource, hasAnyResource, requiredResources
 };

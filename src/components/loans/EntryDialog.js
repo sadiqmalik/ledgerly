@@ -10,6 +10,8 @@ import { splitNames } from '../common/NamesInput';
 import { notifyLoansChanged, useLoanNames } from './useLoanRegisters';
 import { useCurrencies } from '../../hooks/CurrencyContext';
 import Select from '../common/Select';
+import RecordView from '../common/RecordView';
+import Amount from '../common/Amount';
 
 
 // Add (entry null) or edit an entry. onDelete (edit only) asks the caller to confirm and delete.
@@ -17,7 +19,7 @@ import Select from '../common/Select';
 // With several lenders the lender field already says who is repaid, so the receiver starts empty (use it only when someone else got the money).
 const defaultReceiver = (register, kind, askLender) => (kind === 'returned' ? (askLender ? '' : register.lender) : register.borrower);
 
-export default function EntryDialog({ register, entry, copyOf, onClose, onSaved, onDelete, onDuplicate, receivers = [] }) {
+export default function EntryDialog({ register, entry, copyOf, onClose, onSaved, onDelete, onDuplicate, receivers = [], readOnly = false }) {
   const { label: curLabel } = useCurrencies();
   const names = useLoanNames(receivers);
   const lenders = splitNames(register.lender);
@@ -54,6 +56,20 @@ export default function EntryDialog({ register, entry, copyOf, onClose, onSaved,
       onSaved();
     } catch (err) { setError(errorMessage(err)); setBusy(false); }
   };
+
+  if (readOnly && entry) {
+    return (
+      <RecordView title="Loan entry" onClose={onClose}
+        headline={<Amount minor={entry.amount} currency={register.currency} tone={entry.kind === 'taken' ? 'dr' : 'cr'} />}
+        chips={[entry.kind === 'returned' ? 'Returned' : 'Taken']}
+        rows={[
+          { label: 'Date', value: entry.date },
+          { label: entry.kind === 'returned' ? 'Repaid to' : 'From', value: entry.lender },
+          { label: 'Receiver', value: entry.receiver },
+          { label: 'Comment', value: entry.comment, wide: true }
+        ]} />
+    );
+  }
 
   return (
     <Modal title={entry ? 'Edit entry' : copyOf ? 'Duplicate entry' : 'Add entry'} onClose={onClose}>

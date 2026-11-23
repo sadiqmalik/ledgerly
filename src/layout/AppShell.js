@@ -7,10 +7,12 @@ import { useAuth } from '../auth/AuthContext';
 import { api } from '../services/dataAPI';
 import { readLocal, writeLocal } from '../components/common/format';
 import { setTheme } from '../theme';
-import { hasResource, routeResource } from '../auth/resources.mjs';
+import { hasResource, routeResource, forBook } from '../auth/resources.mjs';
 import CurrencyLabel from '../components/common/CurrencyLabel';
+import Select from '../components/common/Select';
 import useLoanRegisters from '../components/loans/useLoanRegisters';
-import { hiddenKey, parseHidden, visibleBooks, toggleHidden } from '../utils/hiddenLedgers.mjs';
+import { visibleBooks } from '../utils/hiddenLedgers.mjs';
+import useHiddenLedgers from '../hooks/useHiddenLedgers';
 import usePageName, { PATH_KEYS } from '../utils/pageNames';
 
 // a sidebar with grouped navigation and icons, a collapse
@@ -188,84 +190,6 @@ function GroupShell({ label, collapsed, dot = false, children }) {
   );
 }
 
-// The ledger switcher: the ledgers the account can use, one row each, in a small box at the top of the sidebar (no group
-// label, since the Dashboard and the pages below show the selected ledger). The active one is highlighted; clicking switches to it.
-function LedgerList({ books, book, onSelectBook, collapsed, onAfterSelect, canCreate, onCreate }) {
-  const { account } = useAuth();
-  const key = hiddenKey(account?.id);
-  const [hidden, setHidden] = useState(() => parseHidden(readLocal(key)));
-  const [choosing, setChoosing] = useState(false);
-  const toggle = id => setHidden(prev => { const next = toggleHidden(prev, id); writeLocal(key, JSON.stringify(next)); return next; });
-  if (choosing && !collapsed) {
-    return (
-      <div role="group" aria-label="Choose ledgers" className="rounded-xl border border-border bg-card p-1">
-        <p className="px-3 py-1 text-xs font-medium text-muted-foreground">Show in sidebar</p>
-        <ul className="flex flex-col gap-1" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-          {books.map(b => {
-            const on = !hidden.includes(b.id);
-            const locked = b.id === book?.id; // the open ledger always stays listed
-            return (
-              <li key={b.id} className="flex items-center gap-3 px-3 py-1.5 text-sm">
-                <span className="min-w-0 flex-1 truncate">{b.name}{b.active === false ? ' (inactive)' : ''}</span>
-                <button type="button" role="switch" aria-checked={on || locked} aria-label={`Show ${b.name} in the sidebar`}
-                  title={locked ? 'The open ledger always shows' : undefined} disabled={locked} onClick={() => toggle(b.id)}
-                  className={`relative h-4 w-7 shrink-0 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50 ${on || locked ? 'bg-accent' : 'bg-border'}`}>
-                  <span aria-hidden="true" className={`absolute left-0.5 top-0.5 size-3 rounded-full bg-white shadow transition-transform ${on || locked ? 'translate-x-3' : ''}`} />
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-        <button type="button" onClick={() => setChoosing(false)} className={`${itemClass(false, false)} mt-1`}>Done</button>
-      </div>
-    );
-  }
-  return (
-    <div role="group" aria-label="Ledgers" className={collapsed ? '' : 'rounded-xl border border-border bg-card p-1'}>
-      <ul className="flex flex-col gap-1" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-        {visibleBooks(books, hidden, book?.id).map(b => {
-          const active = book?.id === b.id;
-          return (
-            <li key={b.id}>
-              <button
-                type="button"
-                aria-current={active ? 'true' : undefined}
-                title={collapsed ? b.name : undefined}
-                aria-label={collapsed ? b.name : undefined}
-                onClick={() => { onSelectBook(b.id); onAfterSelect && onAfterSelect(); }}
-                className={itemClass(active, collapsed)}
-              >
-                <span aria-hidden="true" className={`grid size-6 shrink-0 place-items-center rounded-md text-xs font-semibold ${active ? 'bg-accent text-accent-foreground' : 'bg-muted text-foreground'}`}>
-                  {b.name.slice(0, 1).toUpperCase()}
-                </span>
-                <span className={collapsed ? 'sr-only' : 'min-w-0 flex-1 truncate text-left'}>{b.name}</span>
-                {!collapsed && b.active === false && <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">Inactive</span>}
-                {!collapsed && b.baseCurrency && <span className="shrink-0 text-xs text-muted-foreground"><CurrencyLabel code={b.baseCurrency} /></span>}
-              </button>
-            </li>
-          );
-        })}
-        {!collapsed && books.length > 1 && (
-          <li>
-            <button type="button" onClick={() => setChoosing(true)} className={`${itemClass(false, false)} text-xs`}>
-              Choose ledgers{hidden.length > 0 ? ` (${hidden.length} hidden)` : ''}
-            </button>
-          </li>
-        )}
-        {canCreate && (
-          <li>
-            <button type="button" onClick={onCreate} title={collapsed ? 'New ledger' : undefined} aria-label={collapsed ? 'New ledger' : undefined}
-              className={`${itemClass(false, collapsed)} border border-dashed border-border`}>
-              <Icon name="plus" />
-              <span className={collapsed ? 'sr-only' : 'truncate'}>New ledger</span>
-            </button>
-          </li>
-        )}
-      </ul>
-    </div>
-  );
-}
-
 // Open projects as a child list under the Projects item, so one click jumps to a project. Loaded when first opened and
 // again whenever the route changes while it is open (a new, closed or renamed project shows up).
 function ProjectChildren({ bookId, route, onNavigate }) {
@@ -324,7 +248,7 @@ function LoanChildren({ route, onNavigate, bookId }) {
 
 // Items that open a child list under them (Projects, Loans). One row: the page link and, inside the same highlighted
 // row, a small arrow that opens or closes the list. The open state is kept in this browser.
-const EXPANDABLE = { '/projects': 'ledger.sidebar.projectsOpen', '/loans': 'ledger.sidebar.loansOpen' };
+const EXPANDABLE = { '/projects': 'ledger.sidebar.projectsOpen.v2', '/loans': 'ledger.sidebar.loansOpen.v2' };
 const rowLinkClass = active => [
   'flex min-w-0 flex-1 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium no-underline',
   'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
@@ -415,6 +339,58 @@ function ThemeToggle() {
 }
 
 // Sidebar, phone sheet, top bar and page content. The ledger list lives in the sidebar, so every book is visible.
+// Top-left of the sidebar: the open ledger (initial badge, name, base currency); a dropdown right below lists the other
+// ledgers (honours "hidden" ledgers). Positioned absolutely inside the sidebar, so it also works inside the phone sheet.
+function LedgerSwitcher({ books, book, onSelectBook, onAfterSelect }) {
+  const { hidden } = useHiddenLedgers();
+  const [open, setOpen] = useState(false);
+  const wrap = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDown = e => { if (!wrap.current?.contains(e.target)) setOpen(false); };
+    const onKey = e => { if (e.key === 'Escape') { e.stopPropagation(); setOpen(false); wrap.current?.querySelector('button')?.focus(); } };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey, true);
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey, true); };
+  }, [open]);
+  if (!book) return <span className="truncate text-sm font-semibold tracking-tight">Ledger</span>;
+  const list = visibleBooks(books, hidden, book.id);
+  const badge = (b, active) => (
+    <span aria-hidden="true" className={`grid size-7 shrink-0 place-items-center rounded-md text-xs font-semibold ${active ? 'bg-accent text-accent-foreground' : 'bg-muted text-foreground'}`}>{b.name.slice(0, 1).toUpperCase()}</span>
+  );
+  const cur = b => b.baseCurrency && <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-xs font-semibold text-foreground"><CurrencyLabel code={b.baseCurrency} /></span>;
+  const many = list.length > 1;
+  return (
+    <div ref={wrap} className="relative min-w-0 flex-1">
+      <button type="button" aria-haspopup={many ? 'listbox' : undefined} aria-expanded={many ? open : undefined} aria-label={`Ledger ${book.name}${many ? ', switch ledger' : ''}`}
+        onClick={() => many && setOpen(o => !o)}
+        className={`flex w-full min-w-0 items-center gap-2 rounded-lg border border-border bg-background px-2 py-1.5 text-left text-sm ${many ? 'hover:bg-muted' : 'cursor-default'} focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent`}>
+        {badge(book, true)}
+        <span className="min-w-0 flex-1 truncate font-semibold">{book.name}</span>
+        {cur(book)}
+        {many && <span aria-hidden="true" className="shrink-0 text-xs opacity-60">&#9662;</span>}
+      </button>
+      {open && (
+        <ul role="listbox" aria-label="Ledgers" className="absolute left-0 right-0 top-full z-50 mt-1 max-h-[60vh] overflow-y-auto rounded-lg border border-border bg-card p-1 shadow-lg" style={{ listStyle: 'none', margin: 0, padding: 4, marginTop: 4 }}>
+          {list.map(b => {
+            const active = b.id === book.id;
+            return (
+              <li key={b.id} role="option" aria-selected={active}>
+                <button type="button" onClick={() => { setOpen(false); if (!active) onSelectBook(b.id); onAfterSelect && onAfterSelect(); }}
+                  className={`flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-2 text-left text-sm hover:bg-muted focus-visible:outline-2 focus-visible:outline-accent ${active ? 'font-semibold' : ''}`}>
+                  {badge(b, active)}
+                  <span className="min-w-0 flex-1 truncate">{b.name}{b.active === false ? ' (inactive)' : ''}</span>
+                  {cur(b)}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function AppShell({ books, book, onSelectBook, children }) {
   const route = useHashRoute();
   const { account } = useAuth();
@@ -427,11 +403,12 @@ function AppShell({ books, book, onSelectBook, children }) {
   const menuButtonRef = useRef(null);
   const sheetRef = useRef(null);
 
+  const pages = forBook(account, book?.id); // this ledger's own pages, when it has a list of its own
   const allowedGroups = NAV_GROUPS
-    .map(group => ({ ...group, items: group.items.filter(item => (item.superOnly ? isSuper : hasResource(account, routeResource(item.path)))).map(named) }))
+    .map(group => ({ ...group, items: group.items.filter(item => (item.superOnly ? isSuper : hasResource(pages, routeResource(item.path)))).map(named) }))
     .filter(group => group.items.length > 0);
   const groups = isSuper ? withAdminItem(allowedGroups) : allowedGroups;
-  const topItems = [DASHBOARD_ITEM].filter(item => hasResource(account, routeResource(item.path)));
+  const topItems = [DASHBOARD_ITEM].filter(item => hasResource(pages, routeResource(item.path)));
   const activeItem = ALL_ITEMS.map(named).find(item => isActive(route, item.path));
   const pageTitle = activeItem ? activeItem.label : 'Ledger';
 
@@ -469,15 +446,13 @@ function AppShell({ books, book, onSelectBook, children }) {
 
   const sidebarBody = collapsed => (
     <>
-      <LedgerList
-        books={books}
-        book={book}
-        onSelectBook={onSelectBook}
-        collapsed={collapsed}
-        onAfterSelect={() => setSheetOpen(false)}
-        canCreate={isSuper}
-        onCreate={() => { setCreating(true); setSheetOpen(false); }}
-      />
+      {isSuper && (
+        <button type="button" onClick={() => { setCreating(true); setSheetOpen(false); }} title={collapsed ? 'New ledger' : undefined} aria-label={collapsed ? 'New ledger' : undefined}
+          className={`${itemClass(false, collapsed)} border border-dashed border-border`}>
+          <Icon name="plus" />
+          <span className={collapsed ? 'sr-only' : 'truncate'}>New ledger</span>
+        </button>
+      )}
       {topItems.length > 0 && (
         <nav aria-label="Dashboard">
           <ul className="flex flex-col gap-1" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
@@ -503,11 +478,9 @@ function AppShell({ books, book, onSelectBook, children }) {
         aria-label="Sidebar"
       >
         <div className={`flex items-center gap-2 py-4 ${collapsed ? 'justify-center px-2' : 'justify-between px-4'}`}>
+          {collapsed && book && <span aria-hidden="true" title={book.name} className="grid size-8 shrink-0 place-items-center rounded-lg bg-accent text-sm font-semibold text-accent-foreground">{book.name.slice(0, 1).toUpperCase()}</span>}
           {!collapsed && (
-            <div className="flex min-w-0 items-center gap-2">
-              <span aria-hidden="true" className="grid size-8 shrink-0 place-items-center rounded-lg bg-accent text-base text-accent-foreground">📒</span>
-              <span className="truncate text-sm font-semibold tracking-tight">Ledger</span>
-            </div>
+            <LedgerSwitcher books={books} book={book} onSelectBook={onSelectBook} onAfterSelect={() => setSheetOpen(false)} />
           )}
           <button
             type="button"
@@ -548,10 +521,7 @@ function AppShell({ books, book, onSelectBook, children }) {
           ].join(' ')}
         >
           <div className="flex items-center justify-between gap-2 px-4 py-4">
-            <div className="flex min-w-0 items-center gap-2">
-              <span aria-hidden="true" className="grid size-8 shrink-0 place-items-center rounded-lg bg-accent text-base text-accent-foreground">📒</span>
-              <span className="truncate text-sm font-semibold tracking-tight">Ledger</span>
-            </div>
+            <LedgerSwitcher books={books} book={book} onSelectBook={onSelectBook} onAfterSelect={() => setSheetOpen(false)} />
             <button
               type="button"
               onClick={closeSheet}

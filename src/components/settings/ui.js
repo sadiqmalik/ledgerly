@@ -49,13 +49,17 @@ export function Field({ label, children }) {
 }
 
 // On/off switch with a hint line. Used where a checkbox reads badly as a sentence.
-export function Toggle({ label, hint, checked, onChange, disabled, compact = false }) {
+// tone 'neutral' uses the text colour for the on state instead of the accent, so a group of small switches (pages)
+// reads differently from the switch above it (a ledger's Access).
+export function Toggle({ label, hint, checked, onChange, disabled, compact = false, tone = 'accent' }) {
+  const on = tone === 'neutral' ? 'peer-checked:bg-foreground' : 'peer-checked:bg-[var(--accent)]';
+  const knob = tone === 'neutral' ? 'after:bg-background' : 'after:bg-white';
   if (compact) {
     // Small inline switch for list headers: no box, label beside the switch.
     return (
       <label className={`inline-flex items-center gap-2 text-sm text-muted-foreground ${disabled ? 'opacity-60' : 'cursor-pointer'}`}>
         <input type="checkbox" role="switch" className="sr-only peer" checked={checked} disabled={disabled} onChange={e => onChange(e.target.checked)} />
-        <span aria-hidden="true" className="relative h-5 w-9 shrink-0 rounded-full bg-border transition-colors peer-checked:bg-[var(--accent)] peer-focus-visible:ring-2 peer-focus-visible:ring-accent after:absolute after:left-0.5 after:top-0.5 after:size-4 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:after:translate-x-4" />
+        <span aria-hidden="true" className={`relative h-5 w-9 shrink-0 rounded-full bg-border transition-colors ${on} peer-focus-visible:ring-2 peer-focus-visible:ring-accent after:absolute after:left-0.5 after:top-0.5 after:size-4 after:rounded-full ${knob} after:shadow after:transition-transform peer-checked:after:translate-x-4`} />
         <span>{label}</span>
       </label>
     );
@@ -67,7 +71,7 @@ export function Toggle({ label, hint, checked, onChange, disabled, compact = fal
         {hint && <span className="block text-xs text-muted-foreground">{hint}</span>}
       </span>
       <input type="checkbox" role="switch" className="sr-only peer" checked={checked} disabled={disabled} onChange={e => onChange(e.target.checked)} />
-      <span aria-hidden="true" className="relative h-6 w-11 shrink-0 rounded-full bg-border transition-colors peer-checked:bg-[var(--accent)] peer-focus-visible:ring-2 peer-focus-visible:ring-accent after:absolute after:left-0.5 after:top-0.5 after:size-5 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:after:translate-x-5" />
+      <span aria-hidden="true" className={`relative h-6 w-11 shrink-0 rounded-full bg-border transition-colors ${on} peer-focus-visible:ring-2 peer-focus-visible:ring-accent after:absolute after:left-0.5 after:top-0.5 after:size-5 after:rounded-full ${knob} after:shadow after:transition-transform peer-checked:after:translate-x-5`} />
     </label>
   );
 }
@@ -83,13 +87,15 @@ export const dirProps = { label: 'Credit (money in)', hint: 'On: credit, money c
 
 // A group of on/off switches laid out as tiles that wrap to the width (never one full-width row each).
 // options: [{ value, label, hint? }]; value: the array of switched-on values; onChange gets the new array in option order.
-export function ToggleGrid({ legend, options, value, onChange, disabled, minWidth = 12 }) {
+export function ToggleGrid({ legend, options, value, onChange, disabled, minWidth = 12, small = false }) {
   const flip = key => onChange(options.map(o => o.value).filter(v => (v === key ? !value.includes(key) : value.includes(v))));
   return (
     <fieldset className="m-0 min-w-0 space-y-2 border-0 p-0" disabled={disabled}>
       {legend && <legend className="mb-1 text-sm font-medium text-foreground">{legend}</legend>}
       <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${minWidth}rem), 1fr))` }}>
-        {options.map(o => <Toggle key={o.value} label={o.label} hint={o.hint} checked={value.includes(o.value)} onChange={() => flip(o.value)} disabled={disabled} />)}
+        {options.map(o => small
+          ? <div key={o.value} className="rounded-lg border border-border bg-muted/30 px-2.5 py-1.5"><Toggle compact tone="neutral" label={o.label} checked={value.includes(o.value)} onChange={() => flip(o.value)} disabled={disabled} /></div>
+          : <Toggle key={o.value} label={o.label} hint={o.hint} checked={value.includes(o.value)} onChange={() => flip(o.value)} disabled={disabled} />)}
       </div>
     </fieldset>
   );

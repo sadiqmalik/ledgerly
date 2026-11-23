@@ -34,6 +34,13 @@ export const resourcesOf = account => {
   const list = account.accessCode ? CODE_RESOURCES : RESOURCES;
   return Array.isArray(account.resources) ? list.filter(key => account.resources.includes(key)) : [];
 };
+// The account as seen inside one ledger: its own page list there (if the membership has one) replaces the global list.
+export const forBook = (account, bookId) => {
+  if (!account || account.isSuperAdmin) return account;
+  const m = (account.memberships || []).find(x => x.bookId === bookId);
+  return m && Array.isArray(m.resources) ? { ...account, resources: m.resources } : account;
+};
+
 export const hasResource = (account, key) => resourcesOf(account).includes(key);
 export const hasAnyResource = (account, keys) => keys.some(key => hasResource(account, key));
 

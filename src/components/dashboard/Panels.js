@@ -149,8 +149,10 @@ export function Recent({ data }) {
 
 // Open loans: what is still owed per currency, and the biggest few with how much of each is back.
 export function LoansPanel() {
+  const { book } = useLedger();
   const { registers } = useLoanRegisters();
-  const open = (registers || []).filter(r => !r.settled);
+  // Same rule as the sidebar: this ledger's loans plus loans not linked to any ledger.
+  const open = (registers || []).filter(r => !r.settled && (!r.bookId || r.bookId === book?.id));
   const owed = new Map();
   open.forEach(r => owed.set(r.currency, (owed.get(r.currency) || 0) + Math.max(0, r.totals?.balance ?? 0)));
   const top = open.filter(r => (r.totals?.balance ?? 0) > 0).sort((a, b) => b.totals.balance - a.totals.balance).slice(0, 3);

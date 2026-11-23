@@ -312,3 +312,17 @@ describe('resource helpers', () => {
     assert.deepEqual(R.requiredResources('GET', '/diary', {}), []); // not under a book any more: /api/diary checks itself
   });
 });
+
+describe('forBook', () => {
+  const account = { memberships: [{ bookId: 'a', role: 'viewer', resources: ['items'] }, { bookId: 'b', role: 'viewer' }], resources: ['ledger'] };
+  it('uses a ledger\'s own pages there and the global pages elsewhere', () => {
+    assert.deepEqual(R.effectiveResources(R.forBook(account, 'a')), ['items']);
+    assert.deepEqual(R.effectiveResources(R.forBook(account, 'b')), ['ledger']);
+    assert.equal(R.hasResourceAnywhere(account, 'items'), true);
+    assert.equal(R.hasResourceAnywhere(account, 'documents'), false);
+  });
+  it('never narrows a super administrator', () => {
+    const sa = { isSuperAdmin: true, memberships: [{ bookId: 'a', role: 'admin', resources: [] }] };
+    assert.equal(R.forBook(sa, 'a'), sa);
+  });
+});

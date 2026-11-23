@@ -42,10 +42,20 @@ const createSchema = z.object({
   name: z.string().trim().min(1).max(80),
   code: z.string().max(200).optional(),
   bookIds: z.array(z.string().min(1).max(64)).min(1).max(50),
-  resources: z.array(z.enum(RESOURCES)).max(RESOURCES.length).optional()
+  resources: z.array(z.enum(RESOURCES)).max(RESOURCES.length).optional(),
+  bookResources: z.record(z.string().min(1).max(64), z.array(z.enum(RESOURCES)).max(RESOURCES.length)).optional()
 });
 
-const resourcesSchema = z.object({ resources: z.array(z.enum(RESOURCES)).max(RESOURCES.length) }).strict();
+const resourcesSchema = z.object({
+  resources: z.array(z.enum(RESOURCES)).max(RESOURCES.length),
+  bookResources: z.record(z.string().min(1).max(64), z.array(z.enum(RESOURCES)).max(RESOURCES.length)).optional(),
+  bookIds: z.array(z.string().min(1).max(64)).min(1).max(50).optional()
+}).strict();
+
+// Only the code's own books keep a page list; each is normalised like the global one (no Settings for a code).
+const cleanBookResources = (map, bookIds) => Object.fromEntries(
+  Object.entries(map || {}).filter(([id]) => bookIds.includes(id)).map(([id, list]) => [id, normalizeResources(list)])
+);
 
 const parse = (schema, body) => {
   const result = schema.safeParse(body || {});
@@ -79,7 +89,7 @@ const principalFor = (code, loanIds = []) => ({
   isSuperAdmin: false,
   accessCode: true,
   resources: normalizeResources(code.resources),
-  memberships: code.bookIds.map(bookId => ({ bookId, role: 'viewer' })),
+  memberships: code.bookIds.map(bookId => ({ bookId, role: 'viewer', ...(code.bookResources?.[bookId] ? { resources: normalizeResources(code.bookResources[bookId]) } : {}) })),
   loanMemberships: loanIds.map(registerId => ({ registerId, role: 'viewer' }))
 });
 
@@ -88,6 +98,7 @@ const toView = code => ({
   name: code.name,
   bookIds: code.bookIds,
   resources: normalizeResources(code.resources),
+  bookResources: cleanBookResources(code.bookResources, code.bookIds),
   createdBy: code.createdBy,
   createdAt: code.createdAt,
   lastUsedAt: code.lastUsedAt,
@@ -96,6 +107,10 @@ const toView = code => ({
 
 // store: the D1 storage object from stores/d1.js (repo.authStore).
 const scopeDetail = code => ({ bookIds: code.bookIds });
+
+// When every ledger has its own page list the code's global list is their union (it only matters before a ledger opens).
+const derivedPages = (bookIds, bookResources) => (bookIds.every(id => Array.isArray(bookResources[id]))
+  ? normalizeResources(bookIds.flatMap(id => bookResources[id])) : undefined);
 
 const createAccessCodeService = store => {
   const bump = (key, max, lockMs, now) => store.attempts.recordFailure(key, { max, windowMs: WINDOW_MS, lockMs, now });
@@ -142,7 +157,8 @@ const createAccessCodeService = store => {
       const known = new Set(await store.books.existingIds(bookIds));
       const missing = bookIds.filter(id => !known.has(id));
       if (missing.length > 0) throw new ValidationError(`Unknown book: ${missing.join(', ')}`);
-      const resources = normalizeResources(data.resources === undefined ? DEFAULT_CODE_RESOURCES : data.resources);
+      const bookResources = cleanBookResources(data.bookResources, bookIds);
+      const resources = derivedPages(bookIds, bookResources) ?? normalizeResources(data.resources === undefined ? DEFAULT_CODE_RESOURCES : data.resources);
       const { custom, code } = resolveCode(data.code);
       const codeHash = hashCode(normalizeCode(code));
       const inUse = new ValidationError(IN_USE);
@@ -151,7 +167,7 @@ const createAccessCodeService = store => {
       let saved;
       try {
         saved = await store.accessCodes.insert({
-          name: data.name, codeHash, bookIds, resources, createdBy: actor.email, createdAt: now
+          name: data.name, codeHash, bookIds, resources, bookResources, createdBy: actor.email, createdAt: now
         });
       } catch (error) {
         if (isUnique(error)) throw inUse;
@@ -198,11 +214,18 @@ const createAccessCodeService = store => {
       const existing = await store.accessCodes.findById(id);
       if (!existing) throw new NotFoundError('Access code not found');
       if (existing.revokedAt) throw new ConflictError('A revoked access code cannot be edited. Create a new one.');
-      const resources = normalizeResources(data.resources);
-      await store.accessCodes.setResources(existing.id, resources);
+      const bookIds = data.bookIds ? [...new Set(data.bookIds)] : existing.bookIds;
+      const bookResources = cleanBookResources(data.bookResources, bookIds);
+      const resources = derivedPages(bookIds, bookResources) ?? normalizeResources(data.resources);
+      if (data.bookIds) {
+        const known = new Set(await store.books.existingIds(bookIds));
+        const missing = bookIds.filter(id => !known.has(id));
+        if (missing.length > 0) throw new ValidationError(`Unknown book: ${missing.join(', ')}`);
+      }
+      await store.accessCodes.setResources(existing.id, resources, bookResources, bookIds);
       await store.log.insert({
         actor: { id: actor.id, email: actor.email }, action: 'code-resources', target: `code:${existing.id}`,
-        detail: { name: existing.name, resources }, at: new Date().toISOString()
+        detail: { name: existing.name, resources, bookIds, bookResources: data.bookResources ?? null }, at: new Date().toISOString()
       });
       return toView(await store.accessCodes.findById(existing.id));
     },

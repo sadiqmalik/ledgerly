@@ -3,7 +3,7 @@ const crypto = require('crypto');
 const { Hono } = require('hono');
 const { AppError, ForbiddenError } = require('../server/errors');
 const { canAccess, canAccessLoan } = require('../server/auth/roles');
-const { hasAnyResource, hasResource, requiredResources } = require('../server/auth/resources');
+const { hasAnyResource, hasResource, requiredResources, forBook } = require('../server/auth/resources');
 const { configureLocale } = require('../server/domain/locale');
 const { createAccountAdmin } = require('../server/auth/admin');
 const { runAs } = require('../server/auth/context');
@@ -115,7 +115,7 @@ const createApi = ({ repo, auth, allowedOrigin = 'https://app.ledgerly.test', en
     const account = c.get('account');
     const rest = c.req.path.slice(`/api/books/${c.req.param('b')}`.length);
     const needed = requiredResources(c.req.method, rest, c.req.query());
-    if (needed && !hasAnyResource(account, needed)) throw new ForbiddenError('This account cannot use that page');
+    if (needed && !hasAnyResource(forBook(account, c.req.param('b')), needed)) throw new ForbiddenError('This account cannot use that page');
     return next();
   });
 

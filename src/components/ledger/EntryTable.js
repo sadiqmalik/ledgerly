@@ -45,7 +45,7 @@ export default function EntryTable({ rows, openings = [], openingCaption = '', o
   const projectLinks = can('projects');
   const base = book.baseCurrency;
   const refunded = useMemo(() => refundedIds(rows), [rows]);
-  const canOpen = e => canEdit && Boolean(onSelect) && !isClosedDate(e.date);
+  const canOpen = () => Boolean(onSelect); // everyone can open an entry; the dialog shows a read-only view when it cannot be edited
   const open = e => { if (canOpen(e)) onSelect(e); };
   const keyOpen = (ev, e) => { if (canOpen(e) && (ev.key === 'Enter' || ev.key === ' ')) { ev.preventDefault(); onSelect(e); } };
   const rowClass = e => `${e.exclude ? 'opacity-50' : ''} ${canOpen(e) ? 'cursor-pointer hover:bg-muted/40' : ''}`;
