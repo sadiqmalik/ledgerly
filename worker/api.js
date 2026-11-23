@@ -3,7 +3,7 @@ const crypto = require('crypto');
 const { Hono } = require('hono');
 const { AppError, ForbiddenError } = require('../server/errors');
 const { canAccess, canAccessLoan } = require('../server/auth/roles');
-const { hasAnyResource, hasResource, requiredResources, forBook } = require('../server/auth/resources');
+const { hasAnyResource, hasResource, requiredResources, forBook, loansPageOk } = require('../server/auth/resources');
 const { configureLocale } = require('../server/domain/locale');
 const { createAccountAdmin } = require('../server/auth/admin');
 const { runAs } = require('../server/auth/context');
@@ -126,6 +126,11 @@ const createApi = ({ repo, auth, allowedOrigin = 'https://app.ledgerly.test', en
     if (!hasResource(account, 'loans')) throw new ForbiddenError('This account cannot use that page');
     const register = c.req.path.split('/')[3];
     if (register && !canAccessLoan(account, register, 'viewer')) throw new ForbiddenError('Your account cannot use this loan register');
+    // A loan linked to a ledger also needs the Loans page in that ledger (the same answer whether or not it exists).
+    if (register && !account.isSuperAdmin) {
+      const found = await repo.loans.getRegister(register);
+      if (found && !loansPageOk(account, found.bookId)) throw new ForbiddenError('Your account cannot use this loan register');
+    }
     return next();
   });
   app.use('/api/loans', async (c, next) => {

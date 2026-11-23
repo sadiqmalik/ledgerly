@@ -50,6 +50,9 @@ const hasResourceAnywhere = (account, key) => hasResource(account, key)
   || (account?.memberships || []).some(m => hasResource(forBook(account, m.bookId), key));
 
 const hasResource = (account, key) => effectiveResources(account).includes(key);
+// Loans: a register linked to a ledger needs the Loans page in that ledger; an unlinked one needs it anywhere (the global list).
+// Access to a particular register is still decided by the account's loan roles.
+const loansPageOk = (account, bookId) => Boolean(account && (account.isSuperAdmin || (bookId ? hasResource(forBook(account, bookId), 'loans') : hasResource(account, 'loans'))));
 const hasAnyResource = (account, keys) => {
   const have = effectiveResources(account);
   return keys.some(key => have.includes(key));
@@ -90,5 +93,5 @@ const requiredResources = (method, rest, query = {}) => {
 
 module.exports = {
   RESOURCES, CODE_RESOURCES, OPT_IN_RESOURCES, DEFAULT_ALL_RESOURCES, DEFAULT_CODE_RESOURCES, LOOKUP_READERS, PARTY_READERS, PROJECT_NAME_READERS,
-  forBook, hasResourceAnywhere, isResource, normalizeResources, normalizeCodeResources, effectiveResources, hasResource, hasAnyResource, requiredResources
+  forBook, hasResourceAnywhere, loansPageOk, isResource, normalizeResources, normalizeCodeResources, effectiveResources, hasResource, hasAnyResource, requiredResources
 };

@@ -319,7 +319,7 @@ function NavItem({ item, active, collapsed, onNavigate, renderChildren }) {
   );
 }
 
-function NavLinks({ route, groups, collapsed, label, onNavigate, bookId, flat = false, settingsGroups = [] }) {
+function NavLinks({ route, groups, collapsed, label, onNavigate, bookId, settingsGroups = [] }) {
   // A page with its own children in the sidebar (Projects, Loans) is highlighted only on its own list; on a child page the
   // child is the one highlighted.
   const childrenFor = item => {
@@ -336,15 +336,7 @@ function NavLinks({ route, groups, collapsed, label, onNavigate, bookId, flat = 
     : item.also ? [item.path, ...item.also].includes(route) : isActive(route, item.path) && (!childrenFor(item) || route === item.path));
   return (
     <nav aria-label={label} className="flex flex-col gap-4">
-      {flat ? (
-        <ul {...groupListProps(collapsed)}>
-          {groups.flatMap(g => g.items).map(item => (
-            <li key={item.path}>
-              <NavItem item={item} active={activeOf(item)} collapsed={collapsed} onNavigate={onNavigate} renderChildren={childrenFor(item)} />
-            </li>
-          ))}
-        </ul>
-      ) : groups.map(group => (
+      {groups.map(group => (
         <GroupShell key={group.label} label={group.label} collapsed={collapsed} dot={group.items.some(activeOf)}>
           <ul {...groupListProps(collapsed)}>
             {group.items.map(item => (
@@ -504,7 +496,7 @@ function AppShell({ books, book, onSelectBook, children }) {
           </ul>
         </nav>
       )}
-      <NavLinks label={collapsed ? 'Main navigation' : 'Sheet navigation'} route={route} groups={groups} collapsed={collapsed} onNavigate={() => setSheetOpen(false)} bookId={book?.id} settingsGroups={settingsGroups} flat={Boolean(account?.accessCode)} />
+      <NavLinks label={collapsed ? 'Main navigation' : 'Sheet navigation'} route={route} groups={groups} collapsed={collapsed} onNavigate={() => setSheetOpen(false)} bookId={book?.id} settingsGroups={settingsGroups} />
     </>
   );
 

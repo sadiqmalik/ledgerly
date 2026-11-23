@@ -2,6 +2,7 @@
 // page and the viewer role on :r; each route adds its own minimum role. Every query is scoped by register id.
 const crypto = require('crypto');
 const { loanRoleFor, visibleLoanIds, canAccessLoan, roleFor } = require('../../server/auth/roles');
+const { loansPageOk } = require('../../server/auth/resources');
 const { loanTotals, lenderTotals } = require('../../server/domain/loans');
 const { AppError, ForbiddenError, NotFoundError } = require('../../server/errors');
 const { z, parse, isoDate, money } = require('./validate');
@@ -82,7 +83,7 @@ const registerLoanRoutes = (app, { repo }) => {
 
   app.get('/api/loans', async c => {
     const account = c.get('account');
-    return c.json((await R.listRegisters(visibleLoanIds(account))).map(r => view(r, account)));
+    return c.json((await R.listRegisters(visibleLoanIds(account))).filter(r => loansPageOk(account, r.bookId)).map(r => view(r, account)));
   });
 
   app.post('/api/loans', async c => {

@@ -110,6 +110,8 @@ const registerDiaryRoutes = (app, { repo }) => {
     const role = book && roleFor(account, bookId);
     if (!role) throw notFound('Ledger');
     if (RANK[role] < RANK.editor) throw new ForbiddenError('You need the Editor role in that ledger');
+    // The Notebook page must also be on in that ledger: a notebook is never put into a ledger the account may not open it in.
+    if (!account.isSuperAdmin && !hasResource(forBook(account, bookId), 'diary')) throw notFound('Ledger');
   };
   const checkProject = async (nb, projectId) => {
     if (!projectId) return;

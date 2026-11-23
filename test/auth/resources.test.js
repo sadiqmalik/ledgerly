@@ -85,6 +85,99 @@ describe('page resources', () => {
     for (const key of R.RESOURCES) await assertMatrix(await userWith([key], `${key}@example.com`), [key]);
   });
 
+  // Strict policy audit: pages are per ledger, and a ledger the account has no role in is closed completely.
+  const callAt = (api, bookId, [method, path]) => {
+    const req = api[method](`/api/books/${bookId}${path}`);
+    return ['post', 'put'].includes(method) ? req.send({}) : req;
+  };
+  const assertMatrixAt = async (api, bookId, have) => {
+    for (const row of MATRIX) {
+      const res = await callAt(api, bookId, row);
+      const allowed = row[2].some(key => have.includes(key));
+      const forbidden = res.status === 403 && /cannot use that page/.test(res.body.error || '');
+      assert.equal(forbidden, !allowed, `${bookId}: ${row[0].toUpperCase()} ${row[1]} with [${have}] -> ${res.status}`);
+    }
+  };
+
+  it('with different pages in two ledgers, each ledger gives exactly its own pages and a third ledger gives nothing', async () => {
+    await ctx.d1.prepare("INSERT INTO books (id, name, created_at) VALUES ('third', 'Third', 'now')").run();
+    for (const [first, second] of [[['items'], ['ledger']], [['dashboard', 'reports'], ['documents']], [['ledger', 'projects'], ['items', 'documents']]]) {
+      const email = `multi-${first.join('')}@example.com`;
+      await createAccountStore(ctx.repo.authStore).create({
+        email, name: 'Multi', password: PASSWORD,
+        memberships: [{ bookId: BOOK, role: 'admin', resources: first }, { bookId: 'personal', role: 'admin', resources: second }]
+      });
+      const api = withCookie(ctx.app, `lsid=${(await ctx.auth.login(email, PASSWORD)).sid}`);
+      await assertMatrixAt(api, BOOK, first.filter(k => k !== 'settings'));
+      await assertMatrixAt(api, 'personal', second.filter(k => k !== 'settings'));
+      for (const row of MATRIX) assert.equal((await callAt(api, 'third', row)).status, 403, `third: ${row[0]} ${row[1]}`); // no role there
+    }
+  });
+
+  it('an access code owned by an admin never reaches a page the admin lacks, nor a ledger the admin is not in', async () => {
+    const owner = (await ctx.api.post('/api/admin/accounts').send({
+      username: 'strict', name: 'Strict', password: PASSWORD, memberships: [{ bookId: BOOK, role: 'admin', resources: ['items', 'settings'] }]
+    })).body.account;
+    // A code asking for more pages than the owner has, and for a ledger the owner is not in, is capped or refused.
+    const bad = await ctx.api.post('/api/admin/access-codes').send({ name: 'Wide', bookIds: ['personal'], accountId: owner.id });
+    assert.equal(bad.status, 400);
+    const made = await ctx.api.post('/api/admin/access-codes').send({ name: 'Wide', bookIds: [BOOK], accountId: owner.id, bookResources: { [BOOK]: ['items', 'ledger', 'documents', 'settings'] } });
+    assert.equal(made.status, 201);
+    const signed = await request(ctx.app).post('/api/auth/access-code').set('cf-connecting-ip', '10.9.9.8').send({ code: made.body.accessCode.code });
+    const api = withCookie(ctx.app, signed.headers['set-cookie'][0].split(';')[0]);
+    await assertMatrixAt(api, BOOK, ['items']); // not ledger, documents or settings
+    for (const row of MATRIX) assert.equal((await callAt(api, 'personal', row)).status, 403, `personal: ${row[0]} ${row[1]}`);
+  });
+
+  const loginAs = async (username, memberships, loanMemberships = []) => {
+    const res = await ctx.api.post('/api/admin/accounts').send({ username, name: username, password: PASSWORD, memberships, loanMemberships });
+    assert.equal(res.status, 201);
+    return withCookie(ctx.app, `lsid=${(await ctx.auth.login(username, PASSWORD)).sid}`);
+  };
+
+  it('a loan linked to a ledger needs the Loans page in that ledger, an unlinked one needs it anywhere', async () => {
+    const linked = (await ctx.api.post('/api/loans').send({ name: 'Linked', borrower: 'A', lender: 'B', bookId: BOOK })).body;
+    const free = (await ctx.api.post('/api/loans').send({ name: 'Free', borrower: 'A', lender: 'B' })).body;
+    const loans = [{ registerId: linked.id, role: 'viewer' }, { registerId: free.id, role: 'viewer' }];
+    const off = await loginAs('loansoff', [{ bookId: BOOK, role: 'editor', resources: ['dashboard'] }], loans);
+    assert.deepEqual((await off.get('/api/loans')).body.map(r => r.name), ['Free']);
+    assert.equal((await off.get(`/api/loans/${linked.id}`)).status, 403);
+    assert.equal((await off.get(`/api/loans/${linked.id}/entries`)).status, 403);
+    assert.equal((await off.get(`/api/loans/${free.id}`)).status, 200);
+    const on = await loginAs('loanson', [{ bookId: BOOK, role: 'editor', resources: ['dashboard', 'loans'] }], loans);
+    assert.deepEqual((await on.get('/api/loans')).body.map(r => r.name).sort(), ['Free', 'Linked']);
+    assert.equal((await on.get(`/api/loans/${linked.id}`)).status, 200);
+  });
+
+  it('the Notebook: needs the page in that ledger, never lets a notebook into a ledger without it, and codes only read', async () => {
+    // Notebook page on in the first ledger only.
+    const api = await loginAs('writer', [{ bookId: BOOK, role: 'editor', resources: ['diary'] }, { bookId: 'personal', role: 'editor', resources: ['ledger'] }]);
+    assert.equal((await api.post('/api/diary/notebooks').send({ name: 'Wrong', bookId: 'personal' })).status, 404);
+    const made = await api.post('/api/diary/notebooks').send({ name: 'Mine', bookId: BOOK });
+    assert.equal(made.status, 201);
+    // Someone without the page anywhere is refused outright; with it only in another ledger the notebook stays closed.
+    const none = await loginAs('nopage', [{ bookId: BOOK, role: 'admin', resources: ['ledger'] }]);
+    assert.equal((await none.get('/api/diary/notebooks')).status, 403);
+    const other = await loginAs('otherledger', [{ bookId: BOOK, role: 'admin', resources: ['ledger'] }, { bookId: 'personal', role: 'admin', resources: ['diary'] }]);
+    assert.deepEqual((await other.get('/api/diary/notebooks')).body.map(n => n.name), []);
+    assert.equal((await other.get(`/api/diary/notebooks/${made.body.id}/entries`)).status, 404);
+    // A viewer with the page can read but not write; an owned code with the page reads, one without is refused.
+    const viewer = await loginAs('nbviewer', [{ bookId: BOOK, role: 'viewer', resources: ['diary'] }]);
+    assert.equal((await viewer.get(`/api/diary/notebooks/${made.body.id}/entries`)).status, 200);
+    assert.equal((await viewer.post(`/api/diary/notebooks/${made.body.id}/entries`).send({ title: 'x' })).status, 403);
+    const owner = (await ctx.api.post('/api/admin/accounts').send({ username: 'nbowner', name: 'o', password: PASSWORD, memberships: [{ bookId: BOOK, role: 'admin', resources: ['diary', 'ledger'] }] })).body.account;
+    const withNb = (await ctx.api.post('/api/admin/access-codes').send({ name: 'Has', bookIds: [BOOK], accountId: owner.id })).body.accessCode;
+    const without = (await ctx.api.post('/api/admin/access-codes').send({ name: 'Not', bookIds: [BOOK], accountId: owner.id, bookResources: { [BOOK]: ['ledger'] } })).body.accessCode;
+    const sign = async (code, ip) => withCookie(ctx.app, (await request(ctx.app).post('/api/auth/access-code').set('cf-connecting-ip', ip).send({ code })).headers['set-cookie'][0].split(';')[0]);
+    const reader = await sign(withNb.code, '10.8.8.1');
+    assert.equal((await reader.get(`/api/diary/notebooks/${made.body.id}/entries`)).status, 200);
+    assert.equal((await reader.post(`/api/diary/notebooks/${made.body.id}/entries`).send({ title: 'x' })).status, 403);
+    assert.equal((await reader.delete(`/api/diary/notebooks/${made.body.id}`)).status, 403);
+    const blocked = await sign(without.code, '10.8.8.2');
+    assert.equal((await blocked.get('/api/diary/notebooks')).status, 403);
+    assert.equal((await blocked.get(`/api/diary/notebooks/${made.body.id}/entries`)).status, 403);
+  });
+
   it('a default access code reaches only dashboard, ledger, reports and items', async () => {
     const { api, signed, created } = await codeWith();
     assert.deepEqual(signed.resources, R.DEFAULT_CODE_RESOURCES);
