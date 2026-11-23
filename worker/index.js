@@ -13,7 +13,8 @@ const buildApi = (env, request) => {
   const auth = createAuthService(repo.authStore, {
     idleMinutes: Number(env.SESSION_IDLE_MINUTES) || 720,
     absoluteDays: Number(env.SESSION_ABSOLUTE_DAYS) || 7,
-    cookieSecure: env.COOKIE_SECURE !== 'false' && !plainHttp
+    cookieSecure: env.COOKIE_SECURE !== 'false' && !plainHttp,
+    codeKey: env.ACCESS_CODE_KEY || '' // secret that lets super administrators show access codes again
   });
   // Over plain http (wrangler dev) the Vite dev server on :3100 is also an allowed origin, so `npm run dev` works without Warden.
   const allowedOrigin = [env.ALLOWED_ORIGIN || 'https://app.ledgerly.test'];

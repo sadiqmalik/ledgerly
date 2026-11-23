@@ -383,7 +383,8 @@ erDiagram
   }
   accounts {
     text id PK
-    text email "unique"
+    text username "unique, lower case"
+    text email "optional, unique when present"
     text password_hash
     int is_super_admin
     text memberships "JSON bookId and role"
@@ -493,10 +494,10 @@ sequenceDiagram
   participant A as Auth service
   participant D as D1
 
-  B->>W: POST /api/auth/login with email and password
+  B->>W: POST /api/auth/login with username or email and password
   W->>W: body, then origin check (Origin must be the allowed origin)
-  W->>A: login(email, password)
-  A->>D: find account by lower-cased email
+  W->>A: login(login, password)
+  A->>D: find account by lower-cased username, or by email when the login contains @
   alt unknown or disabled account
     A->>A: verify against a dummy hash (equal time)
     A-->>B: 401 Invalid email or password
@@ -669,7 +670,7 @@ All paths start with `/api`. `:b` is the book id. "Role" is the book role needed
 | Route | Role | Page | What it does |
 | --- | --- | --- | --- |
 | `GET /health` | none | none | Liveness check, no session. |
-| `POST /auth/login`, `POST /auth/logout` | none | none | Sign in with email and password, sign out. |
+| `POST /auth/login`, `POST /auth/logout` | none | none | Sign in with username or email and password, sign out. |
 | `POST /auth/access-code` | none | none | Sign in with an access code (viewer only). |
 | `GET /auth/me`, `POST /auth/password` | any | none | The signed-in account, change own password. |
 | `GET /admin/accounts`, `POST /admin/accounts` | super admin | none | List and create accounts. |

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { api } from '../../services/dataAPI';
+import dataAPI, { api } from '../../services/dataAPI';
 import { useAuth } from '../../auth/AuthContext';
 import { useBooks } from '../../hooks/BooksContext';
 import ConfirmDialog from '../common/ConfirmDialog';
@@ -9,22 +9,25 @@ import { Details, Members, DefaultLedger } from '../settings/LedgerTab';
 import AccessCodesPanel from './AccessCodesPanel';
 import CurrenciesPanel from './CurrenciesPanel';
 import { BookPages, pagesText } from './ResourcePicker';
-import { DEFAULT_ALL_RESOURCES } from '../../auth/resources.mjs';
+import { DEFAULT_ALL_RESOURCES, RESOURCES } from '../../auth/resources.mjs';
 import { errorText, inputCls, btnPrimary, btnSecondary, btnDanger, Badge, Toggle } from '../settings/ui';
 import CurrencyLabel from '../common/CurrencyLabel';
 import Select from '../common/Select';
 import Stamp from '../common/Stamp';
 import useHiddenLedgers from '../../hooks/useHiddenLedgers';
+import useHashQuery from '../../hooks/useHashQuery';
+import { groupSlug, resolveGroup } from '../../utils/groupSlug';
 
 // Super administrators only. Roles: a super administrator can do everything in every ledger; for each ledger a user is
 // an Admin, Editor or Viewer, or has no access to it. Everything here is app-wide; the open ledger's own setup (funds,
 // categories, members, ...) is on the Settings page.
-const GROUPS = ['People and access', 'Ledgers', 'Shared lists'];
+export const ADMIN_GROUPS = ['Access', 'Ledgers', 'Settings'];
+const GROUPS = ADMIN_GROUPS;
 const TABS = [
-  { key: 'users', label: 'Admins', group: 'People and access' },
-  { key: 'codes', label: 'Access codes', group: 'People and access' },
+  { key: 'users', label: 'Admins', group: 'Access' },
+  { key: 'codes', label: 'Access codes', group: 'Access' },
   { key: 'ledgers', label: 'All ledgers', group: 'Ledgers' },
-  { key: 'currencies', label: 'Currencies', group: 'Shared lists' },
+  { key: 'currencies', label: 'Currencies', group: 'Settings' },
 ];
 
 const ROLES = [
@@ -47,39 +50,48 @@ const LOAN_ROLES = [
 const MIN_PASSWORD = 6;
 
 export default function AdminScreen() {
-  const [tab, setTab] = useState('users');
+  const [query, setQuery] = useHashQuery();
+  const params = new URLSearchParams(query);
+  const [tab, setTab] = useState(() => TABS.find(t => t.key === params.get('tab'))?.key || 'users');
+  const [codeIntent, setCodeIntent] = useState(null); // { editId, ownerId?, back? } | { newOwnerId, back } | null
+  const { books } = useBooks();
+  const groupParam = resolveGroup(params.get('group'), GROUPS);
+  const currentTab = TABS.find(t => t.key === tab) || TABS[0];
+  const group = groupParam || currentTab.group;
+  const groupTabs = TABS.filter(t => t.group === group);
+  const shown = groupTabs.find(t => t.key === currentTab.key) || groupTabs[0];
+  const open = (key, g) => { setTab(key); setQuery(`group=${groupSlug(g || group)}&tab=${key}`, { replace: true }); };
+  // A super admin's section can continue on the Settings page: one link pill to the other page's tabs.
+  const other = !books.length ? null : group === 'Ledgers' ? { href: '#/settings?group=ledgers', label: 'This ledger' } : group === 'Settings' ? { href: '#/settings?group=settings', label: 'Display' } : null;
+  const openCodes = intent => { setCodeIntent(intent); open('codes', 'Access'); };
   return (
     <section className="w-full min-w-0 space-y-5">
       <div>
         <p className="text-sm text-muted-foreground">Visible to super administrators only. Admins (super admins and normal admins), access codes, all ledgers and the currency list. The open ledger's own setup is under Settings.</p>
       </div>
 
-      <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-2 md:flex-row md:gap-0">
-        {GROUPS.map((group, i) => (
-          <div key={group} className={`min-w-0 flex-1 ${i > 0 ? 'md:border-l md:border-border md:pl-4' : ''}`}>
-            <p className="px-3 pt-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">{group}</p>
-            <div role="tablist" aria-label={group} className="flex gap-1 overflow-x-auto p-1">
-              {TABS.filter(t => t.group === group).map(t => {
-                const selected = t.key === tab;
-                return (
-                  <button
-                    key={t.key}
-                    type="button"
-                    role="tab"
-                    aria-selected={selected}
-                    onClick={() => setTab(t.key)}
-                    className={`whitespace-nowrap rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${selected ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-                  >
-                    {t.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        ))}
+      <div className="rounded-xl border border-border bg-card p-2">
+        <div role="tablist" aria-label={group} className="flex min-w-0 flex-wrap gap-1">
+          {groupTabs.map(t => {
+            const selected = t.key === shown.key;
+            return (
+              <button
+                key={t.key}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                onClick={() => open(t.key)}
+                className={`whitespace-nowrap rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${selected ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+              >
+                {t.label}
+              </button>
+            );
+          })}
+          {other && <a href={other.href} className="ml-1 whitespace-nowrap rounded-lg border border-accent/50 px-3 py-1.5 text-sm font-medium text-accent no-underline transition-colors hover:bg-accent/10" title="Opens another page">{other.label} &rarr;</a>}
+        </div>
       </div>
 
-      {tab === 'users' ? <UsersPanel /> : tab === 'ledgers' ? <LedgersPanel /> : tab === 'currencies' ? <CurrenciesPanel /> : <AccessCodesPanel />}
+      {shown.key === 'users' ? <UsersPanel onOpenCodes={openCodes} /> : shown.key === 'ledgers' ? <LedgersPanel /> : shown.key === 'currencies' ? <CurrenciesPanel /> : <AccessCodesPanel intent={codeIntent} onIntentDone={() => setCodeIntent(null)} onBack={() => open('users', 'Access')} />}
     </section>
   );
 }
@@ -92,7 +104,8 @@ const accessFrom = (books, memberships = []) => Object.fromEntries(
 // Every ledger carries its own page list: bookPages[bookId] when edited, else the seed (the account's usual pages).
 const membershipsFrom = (access, bookPages = {}, seed = []) => Object.entries(access)
   .filter(([, role]) => role !== 'none')
-  .map(([bookId, role]) => ({ bookId, role, resources: Array.isArray(bookPages[bookId]) ? bookPages[bookId] : seed }));
+  // Settings only goes with the Admin role in that ledger.
+  .map(([bookId, role]) => ({ bookId, role, resources: (Array.isArray(bookPages[bookId]) ? bookPages[bookId] : seed).filter(k => role === 'admin' || k !== 'settings') }));
 const pagesFromMemberships = (memberships = []) => Object.fromEntries(
   memberships.filter(m => Array.isArray(m.resources)).map(m => [m.bookId, m.resources])
 );
@@ -117,7 +130,8 @@ function AccessEditor({ books, access, onChange, disabled, bookPages, onBookPage
           </Select>
         </label>
         {onBookPagesChange && (access[b.id] || 'none') !== 'none' && (
-          <BookPages bookName={b.name} value={bookPages?.[b.id] ?? globalPages} disabled={disabled}
+          <BookPages bookName={b.name} value={(bookPages?.[b.id] ?? globalPages).filter(k => access[b.id] === 'admin' || k !== 'settings')} disabled={disabled}
+            allowed={access[b.id] === 'admin' ? null : RESOURCES.filter(k => k !== 'settings')}
             onChange={v => onBookPagesChange({ ...bookPages, [b.id]: v })} />
         )}
         </div>
@@ -158,7 +172,7 @@ function LoanAccessEditor({ registers, access, onChange, disabled }) {
   );
 }
 
-function UsersPanel() {
+function UsersPanel({ onOpenCodes }) {
   const { account: me } = useAuth();
   const { books } = useBooks();
   const [accounts, setAccounts] = useState(null);
@@ -167,6 +181,7 @@ function UsersPanel() {
   const [notice, setNotice] = useState('');
   const [adding, setAdding] = useState(false);
   const [version, setVersion] = useState(0);
+  const [codes, setCodes] = useState([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -181,6 +196,14 @@ function UsersPanel() {
     api.get('/admin/accounts')
       .then(res => { if (!cancelled) { setAccounts(res.data.accounts || []); setError(''); } })
       .catch(err => { if (!cancelled) setError(errorText(err)); });
+    return () => { cancelled = true; };
+  }, [version]);
+
+  useEffect(() => {
+    let cancelled = false;
+    dataAPI.listAccessCodes()
+      .then(list => { if (!cancelled) setCodes(Array.isArray(list) ? list : []); })
+      .catch(() => { if (!cancelled) setCodes([]); });
     return () => { cancelled = true; };
   }, [version]);
 
@@ -211,13 +234,16 @@ function UsersPanel() {
       {!accounts && !error && <p className="text-sm text-muted-foreground">Loading admins...</p>}
 
       {accounts && (
-        <ul className="grid gap-3 xl:grid-cols-2" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+        <ul className="grid items-start gap-3 grid-cols-[repeat(auto-fill,minmax(min(100%,24rem),1fr))]" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
           {accounts.map(a => (
             <li key={a.id}>
               <UserCard
                 account={a}
                 books={books}
                 registers={registers}
+                codes={codes.filter(c => c.accountId === a.id)}
+                unlinkedCodes={codes.filter(c => !c.accountId && !c.revokedAt)}
+                onOpenCodes={onOpenCodes}
                 isMe={a.id === me?.id}
                 bookName={bookName}
                 onChanged={reload}
@@ -233,6 +259,7 @@ function UsersPanel() {
 }
 
 function AddUserForm({ books, registers, onCancel, onDone }) {
+  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
@@ -250,8 +277,8 @@ function AddUserForm({ books, registers, onCancel, onDone }) {
     setBusy(true);
     setError('');
     try {
-      await api.post('/admin/accounts', { email: email.trim(), name: name.trim(), password, isSuperAdmin: isSuper, ...(isSuper ? {} : { memberships: membershipsFrom(access, bookPages, pages), loanMemberships: loanMembershipsFrom(loanAccess), resources: Object.keys(loanAccess).some(k => loanAccess[k] !== 'none') ? ['loans'] : [] }) });
-      onDone(`${email.trim()} was added. Give them the password in person; they can change it after signing in.`);
+      await api.post('/admin/accounts', { username: username.trim(), email: email.trim(), name: name.trim(), password, isSuperAdmin: isSuper, ...(isSuper ? {} : { memberships: membershipsFrom(access, bookPages, pages), loanMemberships: loanMembershipsFrom(loanAccess), resources: Object.keys(loanAccess).some(k => loanAccess[k] !== 'none') ? ['loans'] : [] }) });
+      onDone(`${username.trim() || email.trim()} was added. Give them the password in person; they can change it after signing in.`);
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -266,8 +293,11 @@ function AddUserForm({ books, registers, onCancel, onDone }) {
         <label className="block text-sm font-medium text-foreground">Name
           <input className={inputCls} value={name} onChange={e => setName(e.target.value)} required maxLength={120} />
         </label>
-        <label className="block text-sm font-medium text-foreground">Email
-          <input type="email" className={inputCls} value={email} onChange={e => setEmail(e.target.value)} required maxLength={200} />
+        <label className="block text-sm font-medium text-foreground">Username
+          <input className={inputCls} value={username} onChange={e => setUsername(e.target.value)} maxLength={40} autoCapitalize="none" spellCheck={false} placeholder="Taken from the email if left empty" />
+        </label>
+        <label className="block text-sm font-medium text-foreground">Email (optional)
+          <input type="email" className={inputCls} value={email} onChange={e => setEmail(e.target.value)} maxLength={200} />
         </label>
         <label className="block text-sm font-medium text-foreground sm:col-span-2">Starting password (at least {MIN_PASSWORD} characters)
           <input type="password" autoComplete="new-password" className={inputCls} value={password} onChange={e => setPassword(e.target.value)} required minLength={MIN_PASSWORD} />
@@ -294,7 +324,7 @@ function AddUserForm({ books, registers, onCancel, onDone }) {
 
       {error && <p role="alert" className="text-sm text-negative">{error}</p>}
       <div className="flex flex-wrap gap-2">
-        <button type="submit" className={btnPrimary} disabled={busy}>{busy ? 'Adding...' : 'Add admin'}</button>
+        <button type="submit" className={btnPrimary} disabled={busy || (!username.trim() && !email.trim())}>{busy ? 'Adding...' : 'Add admin'}</button>
         <button type="button" className={btnSecondary} onClick={onCancel} disabled={busy}>Cancel</button>
       </div>
     </form>
@@ -302,13 +332,14 @@ function AddUserForm({ books, registers, onCancel, onDone }) {
   );
 }
 
-function UserCard({ account: a, books, registers, isMe, bookName, onChanged, onNotice, onError }) {
-  const [mode, setMode] = useState(null); // null | 'access' | 'loans' | 'pages' | 'password' | 'delete'
+function UserCard({ account: a, books, registers, codes = [], unlinkedCodes = [], onOpenCodes, isMe, bookName, onChanged, onNotice, onError }) {
+  const [mode, setMode] = useState(null); // null | 'access' | 'loans' | 'pages' | 'profile' | 'password' | 'delete'
   const [access, setAccess] = useState({});
   const [bookPages, setBookPages] = useState({});
   const [loanAccess, setLoanAccess] = useState({});
   const [password, setPassword] = useState('');
   const [confirmEmail, setConfirmEmail] = useState('');
+  const [profile, setProfile] = useState({ name: '', username: '', email: '' });
   const [busy, setBusy] = useState(false);
   const [localError, setLocalError] = useState('');
   const [typeDialog, setTypeDialog] = useState(false);
@@ -335,7 +366,7 @@ function UserCard({ account: a, books, registers, isMe, bookName, onChanged, onN
 
   const saveAccess = () => run(
     () => api.put(`/admin/accounts/${a.id}/memberships`, { memberships: membershipsFrom(access, bookPages, a.resources || []) }),
-    `Access for ${a.email} saved.`
+    `Access for ${a.username} saved.`
   );
 
   const registerName = id => registers.find(r => r.id === id)?.name || id;
@@ -344,42 +375,60 @@ function UserCard({ account: a, books, registers, isMe, bookName, onChanged, onN
 
   const saveLoans = () => run(
     () => api.put('/admin/accounts/' + a.id + '/loan-memberships', { loanMemberships: loanMembershipsFrom(loanAccess) }),
-    `Loan access for ${a.email} saved.`
+    `Loan access for ${a.username} saved.`
   );
 
+
+  const startProfile = () => { setProfile({ name: a.name || '', username: a.username || '', email: a.email || '' }); setLocalError(''); setMode('profile'); };
+
+  const profileChanges = () => {
+    const c = {};
+    if (profile.name.trim() !== (a.name || '')) c.name = profile.name.trim();
+    if (profile.username.trim() !== (a.username || '')) c.username = profile.username.trim();
+    if (profile.email.trim() !== (a.email || '')) c.email = profile.email.trim() || null;
+    return c;
+  };
+  const profileDirty = Object.keys(profileChanges()).length > 0;
+  const profileValid = profile.name.trim() !== '' && profile.username.trim() !== '';
+
+  const saveProfile = e => {
+    e.preventDefault();
+    if (!profileDirty || !profileValid) return;
+    run(() => api.put(`/admin/accounts/${a.id}/profile`, profileChanges()), `Details for ${a.username} saved.`);
+  };
 
   const resetPassword = e => {
     e.preventDefault();
     if (password.length < MIN_PASSWORD) { setLocalError(`The password must be at least ${MIN_PASSWORD} characters.`); return; }
-    run(() => api.post(`/admin/accounts/${a.id}/password`, { password }), `Password reset for ${a.email}. Their sessions were signed out.`);
+    run(() => api.post(`/admin/accounts/${a.id}/password`, { password }), `Password reset for ${a.username}. Their sessions were signed out.`);
   };
 
   const changeType = () => run(
     () => api.put(`/admin/accounts/${a.id}/type`, { isSuperAdmin: !a.isSuperAdmin }),
-    a.isSuperAdmin ? `${a.email} is now a normal admin. Give them their ledgers, loans and pages.` : `${a.email} is now a super admin.`
+    a.isSuperAdmin ? `${a.username} is now a normal admin. Give them their ledgers, loans and pages.` : `${a.username} is now a super admin.`
   ).finally(() => setTypeDialog(false));
 
   const toggleDisabled = () => run(
     () => api.put(`/admin/accounts/${a.id}/status`, { disabled: !a.disabled }),
-    `${a.email} ${a.disabled ? 'enabled' : 'disabled'}.`
+    `${a.username} ${a.disabled ? 'enabled' : 'disabled'}.`
   );
 
-  const remove = () => run(() => api.delete(`/admin/accounts/${a.id}`), `${a.email} was deleted.`);
+  const remove = () => run(() => api.delete(`/admin/accounts/${a.id}`), `${a.username} was deleted.`);
 
   const locked = a.lockedUntil && new Date(a.lockedUntil) > new Date();
 
   return (
-    <article className="flex h-full flex-col gap-3 rounded-xl border border-border bg-card p-4">
+    <article className="flex h-full min-w-0 flex-col gap-3 rounded-xl border border-border bg-card p-4">
       <header className="flex min-w-0 items-start gap-3">
         <span aria-hidden="true" className="grid size-10 shrink-0 place-items-center rounded-full bg-muted text-sm font-semibold text-foreground">
-          {(a.name || a.email).slice(0, 1).toUpperCase()}
+          {(a.name || a.username).slice(0, 1).toUpperCase()}
         </span>
         <div className="min-w-0 flex-1">
           <p className="truncate font-semibold text-foreground">
-            {a.name || a.email}
+            {a.name || a.username}
             {isMe && <Badge>you</Badge>}
           </p>
-          <p className="truncate text-sm text-muted-foreground">{a.email}</p>
+          <p className="truncate text-sm text-muted-foreground">{a.username}{a.email ? ` · ${a.email}` : ''}</p>
           <p className="mt-1 flex flex-wrap gap-1 text-xs">
             {a.isSuperAdmin ? <span className="rounded bg-accent px-1.5 py-0.5 text-accent-foreground">Super admin</span> : <span className="rounded bg-muted px-1.5 py-0.5 text-muted-foreground">Admin</span>}
             {a.disabled && <span className="rounded bg-negative/15 px-1.5 py-0.5 text-negative">Disabled</span>}
@@ -427,6 +476,33 @@ function UserCard({ account: a, books, registers, isMe, bookName, onChanged, onN
       )}
 
 
+      {mode !== 'access' && mode !== 'loans' && onOpenCodes && (
+        <div className="text-sm">
+          <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Access codes</p>
+          <ul className="flex flex-wrap gap-1.5" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+            {codes.map(c => (
+              <li key={c.id}>
+                <button type="button" onClick={() => onOpenCodes({ editId: c.id, back: true })} className="rounded-full border border-border px-2 py-0.5 text-xs text-foreground hover:bg-muted">
+                  {c.name}{c.revokedAt && <span className="text-muted-foreground"> · revoked</span>}
+                </button>
+              </li>
+            ))}
+            <li>
+              <button type="button" onClick={() => onOpenCodes({ newOwnerId: a.id, back: true })} className="rounded-full border border-dashed border-border px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">+ New code</button>
+            </li>
+            <li>
+              {unlinkedCodes.length ? (
+                <Select value="" onChange={e => e.target.value && onOpenCodes({ editId: e.target.value, ownerId: a.id, back: true })} className="rounded-full border border-dashed border-border bg-background px-2 py-0.5 text-xs text-muted-foreground" aria-label="Link existing code">
+                  <option value="">Link existing code</option>
+                  {unlinkedCodes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </Select>
+              ) : (
+                <button type="button" disabled title="No unlinked codes" className="rounded-full border border-dashed border-border px-2 py-0.5 text-xs text-muted-foreground opacity-50">Link existing code</button>
+              )}
+            </li>
+          </ul>
+        </div>
+      )}
 
       {a.lastLoginAt && mode !== 'access' && <p className="text-xs text-muted-foreground">Last sign-in: {new Date(a.lastLoginAt).toLocaleString()}</p>}
 
@@ -456,6 +532,7 @@ function UserCard({ account: a, books, registers, isMe, bookName, onChanged, onN
         <div className="mt-auto flex flex-wrap gap-2 pt-1">
           {!a.isSuperAdmin && <button type="button" className={btnSecondary} onClick={startAccess}>Edit ledgers</button>}
           {!a.isSuperAdmin && <button type="button" className={btnSecondary} onClick={startLoans}>Edit loans</button>}
+          <button type="button" className={btnSecondary} onClick={startProfile}>Edit details</button>
           <button type="button" className={btnSecondary} onClick={() => { setMode('password'); setLocalError(''); }}>Reset password</button>
           {!isMe && <button type="button" className={btnSecondary} disabled={busy} onClick={() => setTypeDialog(true)}>{a.isSuperAdmin ? 'Make normal admin' : 'Make super admin'}</button>}
           {!isMe && (
@@ -465,6 +542,31 @@ function UserCard({ account: a, books, registers, isMe, bookName, onChanged, onN
           )}
           {!isMe && <button type="button" className={btnDanger} onClick={() => { setMode('delete'); setLocalError(''); }}>Delete admin</button>}
         </div>
+      )}
+
+      {mode === 'profile' && (
+        <form onSubmit={saveProfile} className="mt-auto space-y-2 rounded-lg bg-muted p-3">
+          <label className="block text-sm font-medium text-foreground">
+            Name
+            <input className={inputCls} value={profile.name} onChange={e => setProfile({ ...profile, name: e.target.value })} required />
+          </label>
+          <label className="block text-sm font-medium text-foreground">
+            Username
+            <input className={inputCls} value={profile.username} placeholder={a.username} autoComplete="off"
+              onChange={e => setProfile({ ...profile, username: e.target.value })} required />
+            <span className="mt-1 block text-xs font-normal text-muted-foreground">Used to sign in. 2-40 letters, digits, . _ -</span>
+          </label>
+          <label className="block text-sm font-medium text-foreground">
+            Email (optional)
+            <input type="email" className={inputCls} value={profile.email} autoComplete="off"
+              onChange={e => setProfile({ ...profile, email: e.target.value })} />
+            <span className="mt-1 block text-xs font-normal text-muted-foreground">Leave empty to remove</span>
+          </label>
+          <div className="flex gap-2">
+            <button type="submit" className={btnPrimary} disabled={busy || !profileDirty || !profileValid}>{busy ? 'Saving...' : 'Save details'}</button>
+            <button type="button" className={btnSecondary} disabled={busy} onClick={() => { setMode(null); setLocalError(''); }}>Cancel</button>
+          </div>
+        </form>
       )}
 
       {mode === 'password' && (
@@ -484,9 +586,9 @@ function UserCard({ account: a, books, registers, isMe, bookName, onChanged, onN
       {mode === 'delete' && (
         <div className="mt-auto space-y-2 rounded-lg border border-negative p-3">
           <p className="text-sm text-foreground">This deletes {a.email} and signs them out. Type the email to confirm.</p>
-          <input aria-label="Type the email to confirm" className={inputCls} value={confirmEmail} onChange={e => setConfirmEmail(e.target.value)} />
+          <input aria-label="Type the username to confirm" className={inputCls} value={confirmEmail} onChange={e => setConfirmEmail(e.target.value)} />
           <div className="flex gap-2">
-            <button type="button" className={btnDanger} disabled={busy || confirmEmail.trim().toLowerCase() !== a.email.toLowerCase()} onClick={remove}>
+            <button type="button" className={btnDanger} disabled={busy || confirmEmail.trim().toLowerCase() !== a.username.toLowerCase()} onClick={remove}>
               {busy ? 'Deleting...' : 'Delete admin'}
             </button>
             <button type="button" className={btnSecondary} onClick={() => { setMode(null); setConfirmEmail(''); setLocalError(''); }}>Cancel</button>
@@ -499,8 +601,8 @@ function UserCard({ account: a, books, registers, isMe, bookName, onChanged, onN
         <ConfirmDialog
           title={a.isSuperAdmin ? 'Make normal admin?' : 'Make super admin?'}
           message={a.isSuperAdmin
-            ? `${a.email} will lose access to everything except the ledgers, loans and pages you give them afterwards. They are signed out and must sign in again.`
-            : `${a.email} will get every ledger, loan and page and can manage other admins. They are signed out and must sign in again.`}
+            ? `${a.username} will lose access to everything except the ledgers, loans and pages you give them afterwards. They are signed out and must sign in again.`
+            : `${a.username} will get every ledger, loan and page and can manage other admins. They are signed out and must sign in again.`}
           confirmLabel={a.isSuperAdmin ? 'Make normal admin' : 'Make super admin'}
           busy={busy} onConfirm={changeType} onCancel={() => setTypeDialog(false)} />
       )}

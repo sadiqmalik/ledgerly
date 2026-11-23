@@ -1,6 +1,8 @@
 # Plan: link access codes to admin accounts, and usernames
 
-Status: plan only, nothing built. This version keeps access codes as they are (several codes, their own screen) and
+Status: phases 1 and 2 built; phase 3 (require an owner on every code) not done.
+
+This version keeps access codes as they are (several codes, their own screen) and
 links each one to an admin account. It replaces an earlier idea of turning codes into accounts.
 
 ## Goal
@@ -19,8 +21,7 @@ links each one to an admin account. It replaces an earlier idea of turning codes
   the inheriting codes, but an own list can never exceed the owner.
 - A code can only name ledgers its owner is a member of (a super admin owner may name any ledger) and, for loans,
   only registers its owner may use.
-- The code stops working at once when its owner is disabled, loses the ledger, or is deleted (delete the owner's codes
-  with the owner, or refuse the delete while codes exist: decide in phase 2).
+- The code stops working at once when its owner is disabled or loses the ledger; deleting the owner deletes their codes.
 - Unchanged: the code is stored as a hash only and shown once, unique, case-sensitive, 8-64 characters, per-IP
   failure limit, revoke and reset end sessions.
 
@@ -45,7 +46,8 @@ the "Own pages" switch is on, absent = inherits.
   the owner no longer has; returns nothing (code refused) when the owner is missing or disabled. Keep principal id `code:<id>`
   and add `ownerAccountId` for audit and display.
 - Create and edit validate the owner and the chosen ledgers and loans against the owner's access.
-- `worker/routes/auth.js`: login accepts `login` (still accept `email` for a release). Audit log events fall back to username.
+- `worker/routes/auth.js`: login accepts `login` (still accept `email` for a release); the code endpoint is unchanged. Audit log events fall back to username.
+- Account delete removes the owner's codes and their sessions in the same operation (audit-logged).
 
 ## Client
 
@@ -66,15 +68,15 @@ the "Own pages" switch is on, absent = inherits.
 ## Tests
 
 - New: username and email login, clash handling, email optional and unique; a code inherits the owner's per-ledger pages;
-  an own list is capped by the owner; owner loses a ledger or page and the code follows; disabled or deleted owner blocks
-  the code; a code cannot name a ledger or loan the owner lacks; unlinked old codes still work.
+  an own list is capped by the owner; owner loses a ledger or page and the code follows; disabled owner blocks
+  the code and deleting the owner deletes it; a code cannot name a ledger or loan the owner lacks; unlinked old codes still work.
 - Change: `test/auth/access-codes.test.js`, `test/api/loan-access-codes.test.js` (owner needed on create).
 
-## Open questions
+## Decisions (answered)
 
-- Can a normal admin manage their own codes, or only super admins as today?
-- What happens to a code when its owner is deleted: delete it too, or block the delete while codes exist?
-- Keep the `/api/auth/access-code` path name, or rename to `/api/auth/code`?
+- Only super administrators manage access codes (create, edit, reset, revoke, delete), as today.
+- Deleting an admin also deletes their codes (and ends any code sessions), in the same step.
+- Code sign-in stays as it is: same page, same `/api/auth/access-code` path. No rename.
 
 ## Suggested way to run it
 

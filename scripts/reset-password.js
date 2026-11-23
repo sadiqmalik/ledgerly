@@ -11,15 +11,14 @@ const { parseArgs, readSecret, confirmLive, sqlString, validEmail, runSql } = re
 const main = async () => {
   const args = parseArgs(process.argv.slice(2));
   const remote = Boolean(args.remote);
-  const email = String(args.email || '').trim().toLowerCase();
+  const email = String(args.email || args.username || '').trim().toLowerCase();
   if (!email) {
-    console.error('Usage: reset-password.js [--remote] --email <email>');
+    console.error('Usage: reset-password.js [--remote] --email <email> | --username <name>');
     process.exit(2);
   }
-  if (!validEmail(email)) throw new Error('A valid email address is required');
 
-  const found = runSql(`SELECT id FROM accounts WHERE email = ${sqlString(email)}`, { remote, json: true });
-  if (found.length === 0) throw new Error('No account with that email. Nothing was changed.');
+  const found = runSql(`SELECT id FROM accounts WHERE ${email.includes('@') ? 'email' : 'username'} = ${sqlString(email)}`, { remote, json: true });
+  if (found.length === 0) throw new Error('No account with that username or email. Nothing was changed.');
 
   const password = await readSecret('New password (min 6 characters, hidden): ');
   if (password.length < MIN_PASSWORD_LENGTH) {

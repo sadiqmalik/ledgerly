@@ -42,7 +42,8 @@ const effectiveResources = account => {
 const forBook = (account, bookId) => {
   if (!account || account.isSuperAdmin) return account;
   const m = (account.memberships || []).find(x => x.bookId === bookId);
-  return m && Array.isArray(m.resources) ? { ...account, resources: m.resources } : account;
+  if (!m) return account;
+  return Array.isArray(m.resources) ? { ...account, resources: m.resources } : account;
 };
 // True when some book gives this page even though the global list may not (used before a book is known).
 const hasResourceAnywhere = (account, key) => hasResource(account, key)
@@ -81,7 +82,7 @@ const requiredResources = (method, rest, query = {}) => {
       return second === 'rates' && method === 'PUT' ? ['ledger', 'settings'] : ['settings'];
     case 'appearance': return read ? null : ['settings'];
     case 'entry-counts': return read ? ['settings'] : [];
-    case 'export': return ['settings'];
+    case 'export': return ['ledger', 'projects', 'documents', 'items']; // what is exported is limited to these pages in worker/routes/export.js
     case 'members': case 'active': return ['settings'];
     default: return [];
   }

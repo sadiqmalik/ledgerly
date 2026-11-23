@@ -18,7 +18,7 @@ export default function RecordView({ title, headline, headlineHint, chips = [], 
   const pills = chips.filter(c => !empty(c));
   return (
     <Modal title={title} onClose={onClose}>
-      <div className="space-y-4">
+      <div className="flex flex-col gap-4">
         {!empty(headline) && (
           <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
             <div className="text-2xl font-semibold tabular-nums">{headline}</div>

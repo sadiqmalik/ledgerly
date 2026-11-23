@@ -132,7 +132,7 @@ export default function EntryForm({ bookId, project, metaKeys, labelOf, categori
             <Field label="Category">
               <Select className={inputCls} value={f.categoryId} onChange={e => set('categoryId', e.target.value)}>
                 <option value="">(none)</option>
-                {categories.filter(c => !c.archived).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                {categories.filter(c => !c.archived || c.id === entry?.categoryId).map(c => <option key={c.id} value={c.id}>{c.name}{c.archived ? ' (archived)' : ''}</option>)}
               </Select>
             </Field>
           </div>

@@ -7,7 +7,7 @@ const registerAuthRoutes = (app, { auth }) => {
 
   app.post('/api/auth/login', async c => {
     const body = c.get('body');
-    const { sid, account: signed } = await auth.login(body.email, body.password);
+    const { sid, account: signed } = await auth.login(body.login ?? body.email, body.password);
     c.header('Set-Cookie', auth.setCookie(sid, auth.idleSeconds));
     return c.json({ success: true, account: publicAccount(signed) });
   });
@@ -32,8 +32,8 @@ const registerAuthRoutes = (app, { auth }) => {
     if (account(c).accessCode) throw new ForbiddenError('Access codes have no password to change');
     const { current, new: next } = c.get('body') || {};
     // Checks the current password (rate limited), changes it, and signs out every session.
-    const signed = await auth.accounts.authenticate(account(c).email, current);
-    await auth.accounts.resetPassword(account(c).email, next);
+    const signed = await auth.accounts.authenticate(account(c).username, current);
+    await auth.accounts.resetPassword(account(c).username, next);
     const sid = await auth.createSession(signed.id);
     c.header('Set-Cookie', auth.setCookie(sid, auth.idleSeconds));
     return c.json({ success: true, message: 'Password changed. Other sessions were signed out.' });

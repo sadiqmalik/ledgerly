@@ -60,6 +60,136 @@ describe('access codes', () => {
     assert.equal(bad.status, 400);
   });
 
+  describe('owned by an admin', () => {
+    const makeOwner = async (resources = ['ledger', 'items'], username = 'owner1') => {
+      const res = await ctx.api.post('/api/admin/accounts').send({
+        username, name: 'Owner', password: 'owner passphrase 123',
+        memberships: [{ bookId: BOOK, role: 'editor', resources }], loanMemberships: []
+      });
+      assert.equal(res.status, 201);
+      return res.body.account;
+    };
+    const makeCode = async (accountId, extra = {}) => {
+      const res = await ctx.api.post('/api/admin/access-codes').send({ name: 'Owned', bookIds: [BOOK], accountId, ...extra });
+      return res;
+    };
+
+    it('inherits the owner\'s pages in the ledger', async () => {
+      const owner = await makeOwner(['ledger', 'items']);
+      const made = await makeCode(owner.id);
+      assert.equal(made.status, 201);
+      assert.equal(made.body.accessCode.accountId, owner.id);
+      const api = cookieOf(await signIn(made.body.accessCode.code, '10.0.1.1'));
+      assert.equal((await api.get(`${base}/items`)).status, 200);
+      assert.equal((await api.get(`${base}/entries`)).status, 200);
+      assert.equal((await api.get(`${base}/documents`)).status, 403);
+      assert.equal((await api.post(`${base}/entries`).send({})).status, 403); // view only whatever the owner may do
+    });
+
+    it('can narrow the owner\'s pages with its own list, but never widen them', async () => {
+      const owner = await makeOwner(['ledger', 'items']);
+      const made = await makeCode(owner.id, { bookResources: { [BOOK]: ['items', 'documents'] } });
+      assert.equal(made.status, 201);
+      const api = cookieOf(await signIn(made.body.accessCode.code, '10.0.1.2'));
+      assert.equal((await api.get(`${base}/items`)).status, 200);
+      assert.equal((await api.get(`${base}/entries`)).status, 403); // not in its own list
+      assert.equal((await api.get(`${base}/documents`)).status, 403); // in its list, but the owner lacks it
+    });
+
+    it('follows the owner when their pages change, and stops when the owner is disabled or deleted', async () => {
+      const owner = await makeOwner(['ledger', 'items']);
+      const made = await makeCode(owner.id);
+      const api = cookieOf(await signIn(made.body.accessCode.code, '10.0.1.3'));
+      assert.equal((await api.get(`${base}/entries`)).status, 200);
+      await ctx.api.put(`/api/admin/accounts/${owner.id}/memberships`).send({ memberships: [{ bookId: BOOK, role: 'editor', resources: ['items'] }] });
+      assert.equal((await api.get(`${base}/entries`)).status, 403);
+      await ctx.api.put(`/api/admin/accounts/${owner.id}/status`).send({ disabled: true });
+      assert.equal((await api.get(`${base}/items`)).status, 401);
+      assert.equal((await signIn(made.body.accessCode.code, '10.0.1.4')).status, 401);
+      await ctx.api.put(`/api/admin/accounts/${owner.id}/status`).send({ disabled: false });
+      assert.equal((await ctx.api.delete(`/api/admin/accounts/${owner.id}`)).status, 200);
+      const codes = (await ctx.api.get('/api/admin/access-codes')).body.accessCodes;
+      assert.equal(codes.some(c => c.id === made.body.accessCode.id), false);
+    });
+
+    it('refuses an unknown owner and ledgers the owner does not have', async () => {
+      const owner = await makeOwner();
+      assert.equal((await makeCode('nope')).status, 400);
+      const res = await ctx.api.post('/api/admin/access-codes').send({ name: 'X', bookIds: ['personal'], accountId: owner.id });
+      assert.equal(res.status, 400);
+    });
+  });
+
+  describe('managed by a ledger Admin', () => {
+    const PASS = 'ledger admin passphrase 1';
+    const makeAdmin = async (username, memberships) => {
+      const res = await ctx.api.post('/api/admin/accounts').send({ username, name: username, password: PASS, memberships });
+      assert.equal(res.status, 201);
+      const login = await request(ctx.app).post('/api/auth/login').send({ login: username, password: PASS });
+      assert.equal(login.status, 200);
+      return { account: res.body.account, api: cookieOf(login) };
+    };
+
+    it('creates, edits and removes only its own codes, for ledgers it administers', async () => {
+      const admin = await makeAdmin('ladmin', [
+        { bookId: BOOK, role: 'admin', resources: ['dashboard', 'ledger', 'items', 'settings'] },
+        { bookId: 'personal', role: 'editor', resources: ['ledger'] }
+      ]);
+      const mine = await admin.api.post('/api/admin/access-codes').send({ name: 'Mine', bookIds: [BOOK], accountId: 'someone-else' });
+      assert.equal(mine.status, 201);
+      assert.equal(mine.body.accessCode.accountId, admin.account.id); // forced to the caller
+      // Not an Admin of that ledger (only an editor): refused.
+      assert.equal((await admin.api.post('/api/admin/access-codes').send({ name: 'X', bookIds: ['personal'] })).status, 400);
+      // Another admin's code, and an unowned one, are invisible and untouchable.
+      const theirs = await createCode([BOOK], 'Theirs');
+      const list = (await admin.api.get('/api/admin/access-codes')).body.accessCodes;
+      assert.deepEqual(list.map(c => c.name), ['Mine']);
+      assert.equal((await admin.api.put(`/api/admin/access-codes/${theirs.id}/resources`).send({ resources: ['ledger'] })).status, 404);
+      assert.equal((await admin.api.post(`/api/admin/access-codes/${theirs.id}/revoke`).send({})).status, 404);
+      assert.equal((await admin.api.delete(`/api/admin/access-codes/${theirs.id}`)).status, 404);
+      // Own code: edit (owner cannot be moved), reset, revoke, delete.
+      const edited = await admin.api.put(`/api/admin/access-codes/${mine.body.accessCode.id}/resources`).send({ resources: ['items'], accountId: 'x' });
+      assert.equal(edited.status, 200);
+      assert.equal(edited.body.accessCode.accountId, admin.account.id);
+      assert.equal((await admin.api.post(`/api/admin/access-codes/${mine.body.accessCode.id}/reset`).send({})).status, 200);
+      assert.equal((await admin.api.post(`/api/admin/access-codes/${mine.body.accessCode.id}/revoke`).send({})).status, 200);
+      assert.equal((await admin.api.delete(`/api/admin/access-codes/${mine.body.accessCode.id}`)).status, 200);
+    });
+
+    it('is refused for accounts that are not an Admin anywhere, and still cannot create users', async () => {
+      const editorOnly = await makeAdmin('justeditor', [{ bookId: BOOK, role: 'editor' }]);
+      assert.equal((await editorOnly.api.get('/api/admin/access-codes')).status, 403);
+      assert.equal((await editorOnly.api.post('/api/admin/access-codes').send({ name: 'X', bookIds: [BOOK] })).status, 403);
+      const ladmin = await makeAdmin('ladmin2', [{ bookId: BOOK, role: 'admin' }]);
+      assert.equal((await ladmin.api.post('/api/admin/accounts').send({ username: 'nope', name: 'N', password: PASS })).status, 403);
+      assert.equal((await ladmin.api.get('/api/admin/accounts')).status, 403);
+    });
+  });
+
+  it('lets a super administrator show a code again, audited, but not a ledger admin or an old code', async () => {
+    const made = await ctx.api.post('/api/admin/access-codes').send({ name: 'Shown', bookIds: [BOOK], code: 'show-me-again-1' });
+    assert.equal(made.status, 201);
+    assert.equal(made.body.accessCode.revealable, true);
+    const shown = await ctx.api.get(`/api/admin/access-codes/${made.body.accessCode.id}/reveal`);
+    assert.equal(shown.status, 200);
+    assert.equal(shown.body.code, 'show-me-again-1');
+    // The stored value is not the code itself.
+    const row = await ctx.d1.prepare('SELECT code_secret FROM access_codes WHERE id = ?').bind(made.body.accessCode.id).first();
+    assert.ok(row.code_secret && !row.code_secret.includes('show-me-again-1'));
+    const log = await ctx.d1.prepare("SELECT COUNT(*) AS n FROM account_log WHERE action = 'reveal-access-code'").first();
+    assert.equal(log.n, 1);
+    // A reset replaces the shown value.
+    const reset = await ctx.api.post(`/api/admin/access-codes/${made.body.accessCode.id}/reset`).send({ code: 'second-secret-22' });
+    assert.equal(reset.status, 200);
+    assert.equal((await ctx.api.get(`/api/admin/access-codes/${made.body.accessCode.id}/reveal`)).body.code, 'second-secret-22');
+    // An old code (no stored secret) cannot be shown until it is reset; revoked codes cannot be shown.
+    await ctx.d1.prepare('UPDATE access_codes SET code_secret = NULL WHERE id = ?').bind(made.body.accessCode.id).run();
+    assert.equal((await ctx.api.get(`/api/admin/access-codes/${made.body.accessCode.id}/reveal`)).status, 404);
+    const other = await createCode([BOOK], 'Other');
+    await ctx.api.post(`/api/admin/access-codes/${other.id}/revoke`).send({});
+    assert.equal((await ctx.api.get(`/api/admin/access-codes/${other.id}/reveal`)).status, 400); // revoked
+  });
+
   it('signs in with a code and gets viewer access to the named book only', async () => {
     const created = await createCode();
     const res = await signIn(created.code);

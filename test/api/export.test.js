@@ -57,8 +57,37 @@ describe('export API', () => {
     assert.equal(d.entries.find(e => e.amount === 1032629).projectId, 'proj');
   });
 
-  it('exports entries as CSV for viewers with quoting, BOM and decimal amounts', async () => {
-    const res = await rawText(viewer.get(`${U}/export?format=csv`));
+  it('exports only what the account\'s pages in the ledger show', async () => {
+    const store = createAccountStore(ctx.repo.authStore);
+    const make = async (name, role, resources) => {
+      await store.create({ email: `${name}@example.com`, name, password: 'a long passphrase here', memberships: [{ bookId: BOOK, role, resources }] });
+      return withCookie(ctx.app, `lsid=${(await ctx.auth.login(`${name}@example.com`, 'a long passphrase here')).sid}`);
+    };
+    // A ledger Admin with only the Items page gets a JSON export without entries, documents or lists.
+    const itemsOnly = await make('itemsonly', 'admin', ['items']);
+    const json = (await itemsOnly.get(`${U}/export?format=json`)).body;
+    assert.equal(json.partial, true);
+    for (const k of ['entries', 'funds', 'documents', 'projects', 'parties']) assert.deepEqual(json[k], [], k);
+    assert.equal((await itemsOnly.get(`${U}/export?format=csv`)).status, 403); // no entries page
+    // Projects only: just the project entries, in JSON and CSV.
+    const projOnly = await make('projonly', 'admin', ['projects']);
+    const pj = (await projOnly.get(`${U}/export?format=json`)).body;
+    assert.equal(pj.entries.length, 1);
+    assert.equal(pj.entries[0].projectId, 'proj');
+    assert.deepEqual(pj.documents, []);
+    const csv = (await rawText(projOnly.get(`${U}/export?format=csv`))).body.toString('utf8');
+    assert.match(csv, /Plain, with comma/);
+    assert.doesNotMatch(csv, /second line/);
+    // The full set for an account with every page.
+    assert.equal((await ctx.api.get(`${U}/export?format=json`)).body.partial, false);
+    // An editor with the Documents page only cannot export entries.
+    const docsOnly = await make('docsonly', 'editor', ['documents']);
+    assert.equal((await docsOnly.get(`${U}/export?format=csv`)).status, 403);
+  });
+
+  it('exports entries as CSV for editors (not viewers) with quoting, BOM and decimal amounts', async () => {
+    assert.equal((await viewer.get(`${U}/export?format=csv`)).status, 403);
+    const res = await rawText(editor.get(`${U}/export?format=csv`));
     assert.equal(res.status, 200);
     assert.match(res.headers['content-type'], /^text\/csv/);
     assert.equal(res.headers['content-disposition'], 'attachment; filename="ledger-family-all.csv"');
@@ -69,7 +98,7 @@ describe('export API', () => {
     assert.ok(body.includes('"He said ""hi""\nsecond line"'));
     assert.ok(!body.includes('deleted one'));
 
-    const y = await rawText(viewer.get(`${U}/export?format=csv&year=2026`));
+    const y = await rawText(editor.get(`${U}/export?format=csv&year=2026`));
     assert.equal(y.headers['content-disposition'], 'attachment; filename="ledger-family-2026.csv"');
     const text = y.body.toString('utf8');
     assert.ok(!text.includes('Plain, with comma'));
@@ -77,8 +106,8 @@ describe('export API', () => {
   });
 
   it('rejects an unknown format', async () => {
-    assert.equal((await viewer.get(`${U}/export?format=xml`)).status, 400);
-    assert.equal((await viewer.get(`${U}/export`)).status, 400);
+    assert.equal((await editor.get(`${U}/export?format=xml`)).status, 400);
+    assert.equal((await editor.get(`${U}/export`)).status, 400);
   });
 
   it('exports stored quantities and unit prices through CSV and JSON', async () => {
@@ -86,7 +115,7 @@ describe('export API', () => {
       date: '2026-03-01', fundId: 'checking', direction: 'dr', quantity: 10, unitPrice: 5000
     });
     assert.equal(created.status, 201);
-    const csv = (await rawText(viewer.get(`${U}/export?format=csv&year=2026`))).body.toString('utf8');
+    const csv = (await rawText(editor.get(`${U}/export?format=csv&year=2026`))).body.toString('utf8');
     assert.ok(csv.includes('2026-03-01,Checking,dr,500.00,PKR'));
     assert.ok(csv.includes(',10,50.00\r\n'));
     const entries = (await ctx.api.get(`${U}/export?format=json`)).body.entries;

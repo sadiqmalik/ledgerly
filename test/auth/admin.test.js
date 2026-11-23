@@ -24,6 +24,20 @@ describe('account administration', () => {
 
   const events = async () => ctx.repo.authStore.log.list();
 
+  it('edits an admin\'s name, username and email, and refuses clashes', async () => {
+    const a = (await ctx.api.post('/api/admin/accounts').send({ username: 'amy', name: 'Amy', password: NEW_PASSWORD })).body.account;
+    const b = (await ctx.api.post('/api/admin/accounts').send({ username: 'bob', email: 'bob@example.com', name: 'Bob', password: NEW_PASSWORD })).body.account;
+    const ok = await ctx.api.put(`/api/admin/accounts/${a.id}/profile`).send({ name: 'Amy Z', username: 'Amy.Z', email: 'Amy@Example.com' });
+    assert.equal(ok.status, 200);
+    assert.deepEqual([ok.body.account.name, ok.body.account.username, ok.body.account.email], ['Amy Z', 'amy.z', 'amy@example.com']);
+    assert.equal((await ctx.api.put(`/api/admin/accounts/${a.id}/profile`).send({ username: 'bob' })).status, 400);
+    assert.equal((await ctx.api.put(`/api/admin/accounts/${a.id}/profile`).send({ email: 'bob@example.com' })).status, 400);
+    assert.equal((await ctx.api.put(`/api/admin/accounts/${a.id}/profile`).send({ username: 'a b' })).status, 400);
+    assert.equal((await ctx.api.put(`/api/admin/accounts/${a.id}/profile`).send({})).status, 400);
+    assert.equal((await ctx.api.put(`/api/admin/accounts/${b.id}/profile`).send({ email: null })).body.account.email, '');
+    assert.equal((await editor.put(`/api/admin/accounts/${a.id}/profile`).send({ name: 'x' })).status, 403);
+  });
+
   it('admin types: a super admin is created without specific access, and the type can be changed', async () => {
     const made = await ctx.api.post('/api/admin/accounts').send({
       email: 'boss@example.com', name: 'Boss', password: NEW_PASSWORD, isSuperAdmin: true,

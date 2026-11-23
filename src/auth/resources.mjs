@@ -38,7 +38,10 @@ export const resourcesOf = account => {
 export const forBook = (account, bookId) => {
   if (!account || account.isSuperAdmin) return account;
   const m = (account.memberships || []).find(x => x.bookId === bookId);
-  return m && Array.isArray(m.resources) ? { ...account, resources: m.resources } : account;
+  if (!m) return account;
+  const own = Array.isArray(m.resources) ? { ...account, resources: m.resources } : account;
+  // Settings is for the ledger's administrators: with any other role in this ledger the page is never available there.
+  return m.role === 'admin' ? own : { ...own, resources: resourcesOf(own).filter(k => k !== 'settings') };
 };
 
 export const hasResource = (account, key) => resourcesOf(account).includes(key);

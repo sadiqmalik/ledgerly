@@ -26,7 +26,8 @@ const createExportRepo = (db, ledger) => {
 
   return {
     // The whole book as one JSON-ready object. Soft-deleted entries are included with deletedAt.
-    async exportBook(bookId, now = new Date()) {
+    // scope: which parts the caller's pages allow ({ ledger, projects, documents, items }); omitted parts come back empty.
+    async exportBook(bookId, now = new Date(), scope = { ledger: true, projects: true, documents: true, items: true }) {
       const book = await ledger.first('SELECT id, name, base_currency FROM books WHERE id = ?', bookId);
       if (!book) return null;
       const [funds, holders, categories, parties, projects, entries, closes, documents, itemLocations, items, entryDocuments] = await db.batch([
@@ -39,23 +40,28 @@ const createExportRepo = (db, ledger) => {
         ledger.run('SELECT * FROM items WHERE book_id = ? ORDER BY name, id', bookId),
         ledger.run('SELECT entry_id, document_id FROM entry_documents WHERE book_id = ? ORDER BY entry_id, document_id', bookId)
       ]));
+      const none = [];
+      const part = (allowed, rows) => (allowed ? rows : none);
+      const withEntries = scope.ledger || scope.projects;
+      const entryRows = entries.results.filter(r => scope.ledger || r.project_id);
       return {
         format: 'ledger-backup', version: 1, exportedAt: now.toISOString(),
+        partial: !(scope.ledger && scope.projects && scope.documents && scope.items),
         book: { id: book.id, name: book.name, baseCurrency: book.base_currency },
-        funds: funds.results.map(mapFund), holders: holders.results.map(mapHolder),
-        categories: categories.results.map(mapCategory), parties: parties.results.map(mapParty),
-        projects: projects.results.map(mapProject),
-        entries: entries.results.map(r => ({ ...mapEntry({ ...r, fund_name: undefined, party_name: undefined, category_name: undefined }), deletedAt: r.deleted_at }))
-          .map(({ fundName, partyName, categoryName, docCount, ...e }) => e),
-        yearCloses: closes.results.map(mapClose), documents: documents.results.map(mapDocument),
-        itemLocations: itemLocations.results.map(r => ({ id: r.id, name: r.name, place: r.place })),
-        items: items.results.map(r => ({ id: r.id, name: r.name, comment: r.comment, locationId: r.location_id, owner: r.owner, updatedAt: r.updated_at })),
-        entryDocuments: entryDocuments.results.map(r => ({ entryId: r.entry_id, documentId: r.document_id }))
+        funds: part(withEntries, funds.results.map(mapFund)), holders: part(withEntries, holders.results.map(mapHolder)),
+        categories: part(withEntries, categories.results.map(mapCategory)), parties: part(withEntries, parties.results.map(mapParty)),
+        projects: part(scope.projects || scope.ledger, projects.results.map(mapProject)),
+        entries: part(withEntries, entryRows.map(r => ({ ...mapEntry({ ...r, fund_name: undefined, party_name: undefined, category_name: undefined }), deletedAt: r.deleted_at }))
+          .map(({ fundName, partyName, categoryName, docCount, ...e }) => e)),
+        yearCloses: part(scope.ledger, closes.results.map(mapClose)), documents: part(scope.documents, documents.results.map(mapDocument)),
+        itemLocations: part(scope.items, itemLocations.results.map(r => ({ id: r.id, name: r.name, place: r.place }))),
+        items: part(scope.items, items.results.map(r => ({ id: r.id, name: r.name, comment: r.comment, locationId: r.location_id, owner: r.owner, updatedAt: r.updated_at }))),
+        entryDocuments: part(scope.documents && withEntries, entryDocuments.results.map(r => ({ entryId: r.entry_id, documentId: r.document_id })))
       };
     },
 
     // Rows for the entries CSV (deleted rows left out), oldest first.
-    async csvRows(bookId, year) {
+    async csvRows(bookId, year, { projectOnly = false } = {}) {
       const range = year ? ' AND e.date >= ? AND e.date <= ?' : '';
       return all(
         `SELECT e.date, f.name AS fund, e.direction, e.amount, e.currency, p.name AS party, c.name AS category,
@@ -64,7 +70,7 @@ const createExportRepo = (db, ledger) => {
          FROM entries e JOIN funds f ON f.id = e.fund_id
          LEFT JOIN parties p ON p.id = e.party_id LEFT JOIN categories c ON c.id = e.category_id
          LEFT JOIN projects j ON j.id = e.project_id
-         WHERE e.book_id = ? AND e.deleted_at IS NULL${range}
+         WHERE e.book_id = ? AND e.deleted_at IS NULL${projectOnly ? ' AND e.project_id IS NOT NULL' : ''}${range}
          ORDER BY e.date, e.created_at, e.id`,
         ...(year ? [bookId, `${year}-01-01`, `${year}-12-31`] : [bookId]));
     }

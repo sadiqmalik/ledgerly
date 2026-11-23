@@ -147,7 +147,18 @@ export default function EntryPanel({ entry, onClose, onChanged, onLinksChanged, 
   const set = k => e => setF(s => ({ ...s, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }));
   const locked = !canEdit;
   const newClosed = !entryClosed && isClosedDate(f.date);
-  const lockOther = locked || linked; // linked legs only allow date, comment and amount
+  const lockOther = locked; // plain entries
+  const lockFixed = locked || linked; // direction and category stay locked on a transfer leg
+  const baseFunds = linked
+    ? funds.filter(x => x.id === entry.fundId || (!x.archived && x.currency === entry.currency && x.id !== entry.fundId))
+    : funds;
+  // Archived funds and categories are not offered for new choices, but the one this entry already has stays shown.
+  const fundOptions = entry.fundId && !baseFunds.some(x => x.id === entry.fundId)
+    ? [{ id: entry.fundId, name: `${entry.fundName || entry.fundId} (archived)`, currency: entry.currency, archived: true }, ...baseFunds]
+    : baseFunds;
+  const categoryOptions = entry.categoryId && !categories.some(c => c.id === entry.categoryId)
+    ? [{ id: entry.categoryId, name: `${entry.categoryName || entry.categoryId} (archived)` }, ...categories]
+    : categories;
   const quantityPreview = parseQuantityInput(f.quantity);
   const unitPricePreview = parseUnitPriceInput(f.unitPrice);
   const totalPreview = quantityPreview && unitPricePreview
@@ -184,6 +195,15 @@ export default function EntryPanel({ entry, onClose, onChanged, onLinksChanged, 
       const amount = parseMoney(f.amount);
       if (amount == null) { setError('Enter a valid amount greater than zero. Use . for decimals.'); return; }
       if (amount !== entry.amount) body.amount = amount;
+      if (f.fundId !== entry.fundId) body.fundId = f.fundId;
+      if ((f.projectId || null) !== (entry.projectId || null)) body.projectId = f.projectId || null;
+      if (f.exclude !== entry.exclude) body.exclude = f.exclude;
+      if (f.party.trim() !== (entry.partyName || '')) {
+        const p = findParty(parties, f.party);
+        if (!f.party.trim()) body.partyId = null;
+        else if (p) body.partyId = p.id;
+        else body.partyName = f.party.trim();
+      }
     } else {
       const qp = validateQuantityPriceInputs(f.quantity, f.unitPrice);
       if (qp.error) { setError(qp.error); return; }
@@ -270,22 +290,22 @@ export default function EntryPanel({ entry, onClose, onChanged, onLinksChanged, 
         {entryClosed && <div className="alert alert-error" role="status">{entry.date.slice(0, 4)} is closed. Reopen it in Settings &rsaquo; Years to make changes.</div>}
         {newClosed && <div className="alert alert-error" role="alert">{f.date.slice(0, 4)} is closed. Pick a date in an open year, or reopen it in Settings &rsaquo; Years.</div>}
         {error && <div className="alert alert-error" role="alert">{error}</div>}
-        {linked && <p className="text-sm text-muted-foreground mb-3">&#8596; Linked transfer leg. Only date, comment and same-currency amount can change.</p>}
+        {linked && <p className="text-sm text-muted-foreground mb-3">&#8596; Linked transfer leg. Party, project, excluded, date and comment apply to both legs; the fund and a conversion's amount change this leg only. Direction and category are fixed.</p>}
         <div className="form-group"><label htmlFor="ep-date">Date</label>
           <input id="ep-date" type="date" min="1900-01-01" max="9999-12-31" value={f.date} onChange={set('date')} disabled={locked} required /></div>
         <div className="form-group"><label htmlFor="ep-fund">Fund</label>
           <Select id="ep-fund" value={f.fundId} onChange={set('fundId')} disabled={lockOther}>
-            {funds.map(x => <option key={x.id} value={x.id}>{x.name} ({curLabel(x.currency)})</option>)}
+            {fundOptions.map(x => <option key={x.id} value={x.id}>{x.name} ({curLabel(x.currency)})</option>)}
           </Select></div>
         <div className="form-group">
           <SideSwitch {...dirProps} value={f.direction}
-            onChange={v => setF(s => ({ ...s, direction: v }))} disabled={lockOther} /></div>
+            onChange={v => setF(s => ({ ...s, direction: v }))} disabled={lockFixed} /></div>
         <div className="form-group"><label htmlFor="ep-party">Party</label>
           <PartyInput id="ep-party" value={f.party} onChange={v => setF(s => ({ ...s, party: v }))} parties={parties} disabled={lockOther} /></div>
         <div className="form-group"><label htmlFor="ep-cat">Category</label>
-          <Select id="ep-cat" value={f.categoryId} onChange={set('categoryId')} disabled={lockOther}>
+          <Select id="ep-cat" value={f.categoryId} onChange={set('categoryId')} disabled={lockFixed}>
             <option value="">(none)</option>
-            {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            {categoryOptions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </Select></div>
         {projectOptions.length > 0 && (
           <div className="form-group"><label htmlFor="ep-project">Project</label>
@@ -319,7 +339,7 @@ export default function EntryPanel({ entry, onClose, onChanged, onLinksChanged, 
           {f.comment.includes('\n')
             ? <textarea id="ep-comment" rows={Math.min(8, f.comment.split('\n').length + 1)} value={f.comment} onChange={set('comment')} disabled={locked} />
             : <input id="ep-comment" value={f.comment} onChange={set('comment')} disabled={locked} />}</div>
-        {!linked && (
+        {(
           <div className="mb-3"><Toggle label="Count in ledger totals" hint="Off keeps the entry as a record, dimmed, but leaves it out of the fund balance and all totals." checked={!f.exclude} onChange={v => setF(s => ({ ...s, exclude: !v }))} disabled={locked} /></div>
         )}
         {!isNew && can('documents') && <EntryDocuments bookId={book.id} entryId={entry.id} canChange={mayEdit} onChanged={onLinksChanged || (() => {})} />}

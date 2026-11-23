@@ -106,7 +106,7 @@ describe('books and members', () => {
 
     let list = (await admin.get(`/api/books/${BOOK}/members`)).body;
     assert.deepEqual(list.map(m => [m.email, m.role, m.isSuperAdmin, m.disabled]), [['badmin@example.com', 'admin', false, false]]);
-    assert.deepEqual(Object.keys(list[0]).sort(), ['accountId', 'disabled', 'email', 'isSuperAdmin', 'name', 'role']);
+    assert.deepEqual(Object.keys(list[0]).sort(), ['accountId', 'disabled', 'email', 'isSuperAdmin', 'name', 'role', 'username']);
 
     assert.equal((await admin.post(`/api/books/${BOOK}/members`).send({ email: 'nobody@example.com', role: 'viewer' })).status, 404);
     assert.equal((await admin.post(`/api/books/${BOOK}/members`).send({ email: 'viewer@example.com', role: 'owner' })).status, 400);

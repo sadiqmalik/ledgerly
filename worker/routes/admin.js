@@ -1,6 +1,12 @@
 // Account administration: super administrators only.
+const { canManageCodes } = require('../../server/auth/accessCodes');
+
 const registerAdminRoutes = (app, { accountAdmin, auth }) => {
   const account = c => c.get('account');
+  // Access codes: super administrators (all) and ledger Admins (only the codes they own, for their own ledgers).
+  const requireCodeManager = async (c, next) => (canManageCodes(account(c))
+    ? next()
+    : c.json({ success: false, error: 'Only a super administrator or a ledger Admin can manage access codes' }, 403));
   const requireSuperAdmin = async (c, next) => (account(c) && account(c).isSuperAdmin
     ? next()
     : c.json({ success: false, error: 'Only a super administrator can manage accounts' }, 403));
@@ -8,29 +14,33 @@ const registerAdminRoutes = (app, { accountAdmin, auth }) => {
   app.get('/api/admin/accounts', requireSuperAdmin, async c => c.json({ success: true, accounts: await accountAdmin.list() }));
 
   // Access codes: create/reset (the code is returned once), list (never the code), revoke.
-  app.get('/api/admin/access-codes', requireSuperAdmin, async c => c.json({ success: true, accessCodes: await auth.accessCodes.list() }));
+  app.get('/api/admin/access-codes', requireCodeManager, async c => c.json({ success: true, accessCodes: await auth.accessCodes.list(account(c)) }));
 
-  app.post('/api/admin/access-codes', requireSuperAdmin, async c => c.json(
+  app.get('/api/admin/access-codes/:id/reveal', requireSuperAdmin, async c => c.json({
+    success: true, code: await auth.accessCodes.reveal(account(c), c.req.param('id'))
+  }));
+
+  app.post('/api/admin/access-codes', requireCodeManager, async c => c.json(
     { success: true, accessCode: await auth.accessCodes.create(account(c), c.get('body')) }, 201
   ));
 
-  app.put('/api/admin/access-codes/:id/resources', requireSuperAdmin, async c => c.json({
+  app.put('/api/admin/access-codes/:id/resources', requireCodeManager, async c => c.json({
     success: true, accessCode: await auth.accessCodes.setResources(account(c), c.req.param('id'), c.get('body'))
   }));
 
-  app.post('/api/admin/access-codes/:id/reset', requireSuperAdmin, async c => c.json({
+  app.post('/api/admin/access-codes/:id/reset', requireCodeManager, async c => c.json({
     success: true, accessCode: await auth.accessCodes.reset(account(c), c.req.param('id'), c.get('body'))
   }));
 
-  app.post('/api/admin/access-codes/:id/revoke', requireSuperAdmin, async c => c.json({
+  app.post('/api/admin/access-codes/:id/revoke', requireCodeManager, async c => c.json({
     success: true, accessCode: await auth.accessCodes.revoke(account(c), c.req.param('id'))
   }));
 
-  app.post('/api/admin/access-codes/:id/restore', requireSuperAdmin, async c => c.json({
+  app.post('/api/admin/access-codes/:id/restore', requireCodeManager, async c => c.json({
     success: true, accessCode: await auth.accessCodes.restore(account(c), c.req.param('id'))
   }));
 
-  app.delete('/api/admin/access-codes/:id', requireSuperAdmin, async c => c.json({
+  app.delete('/api/admin/access-codes/:id', requireCodeManager, async c => c.json({
     success: true, deleted: await auth.accessCodes.remove(account(c), c.req.param('id'))
   }));
 
@@ -48,6 +58,10 @@ const registerAdminRoutes = (app, { accountAdmin, auth }) => {
 
   app.put('/api/admin/accounts/:id/resources', requireSuperAdmin, async c => c.json({
     success: true, account: await accountAdmin.setResources(account(c), c.req.param('id'), c.get('body'))
+  }));
+
+  app.put('/api/admin/accounts/:id/profile', requireSuperAdmin, async c => c.json({
+    success: true, account: await accountAdmin.setProfile(account(c), c.req.param('id'), c.get('body'))
   }));
 
   app.put('/api/admin/accounts/:id/type', requireSuperAdmin, async c => c.json({

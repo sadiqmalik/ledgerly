@@ -4,7 +4,7 @@ const { RESOURCES } = require('../resources');
 
 // Cloudflare D1 storage for accounts, sessions, books and the account log.
 // Plain-object shapes for accounts, sessions and books. Dates are ISO text in D1 and Date objects here.
-const DUPLICATE_EMAIL = 'An account with this email already exists';
+const DUPLICATE_EMAIL = 'An account with this username or email already exists';
 
 const isDuplicate = error => /UNIQUE constraint failed/i.test(String((error && error.message) || ''));
 // D1 rejects undefined as a bind value.
@@ -15,6 +15,7 @@ const iso = value => (value instanceof Date ? value.toISOString() : value);
 
 // Account fields that may be updated, mapped to their columns. memberships is stored as JSON.
 const ACCOUNT_COLUMNS = {
+  username: 'username',
   email: 'email',
   name: 'name',
   passwordHash: 'password_hash',
@@ -45,7 +46,8 @@ const parseResources = (text, { nullable }) => {
 
 const toAccount = row => ({
   id: row.id,
-  email: row.email,
+  username: row.username,
+  email: row.email ?? null,
   name: row.name,
   passwordHash: row.password_hash,
   isSuperAdmin: row.is_super_admin === 1,
@@ -86,6 +88,8 @@ const toAccessCode = row => ({
   bookIds: JSON.parse(row.book_ids || '[]'),
   resources: parseResources(row.resources, { nullable: false }),
   bookResources: parseBookResources(row.book_resources),
+  accountId: row.account_id ?? null,
+  codeSecret: row.code_secret ?? null,
   createdBy: row.created_by,
   createdAt: row.created_at,
   revokedAt: row.revoked_at ?? null,
@@ -114,10 +118,10 @@ const createD1AuthStore = db => {
         const id = newId();
         try {
           await prep(
-            `INSERT INTO accounts (id, email, name, password_hash, is_super_admin, memberships, resources, disabled,
+            `INSERT INTO accounts (id, username, email, name, password_hash, is_super_admin, memberships, resources, disabled,
               failed_logins, locked_until, last_login_at, created_at, updated_at, loan_memberships)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            id, account.email, account.name, account.passwordHash, account.isSuperAdmin ? 1 : 0,
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            id, account.username, account.email ?? null, account.name, account.passwordHash, account.isSuperAdmin ? 1 : 0,
             JSON.stringify(account.memberships || []), Array.isArray(account.resources) ? JSON.stringify(account.resources) : null,
             account.disabled ? 1 : 0, account.failedLogins || 0,
             account.lockedUntil ?? null, account.lastLoginAt ?? null, account.createdAt, account.updatedAt ?? null,
@@ -137,6 +141,11 @@ const createD1AuthStore = db => {
 
       async findByEmail(email) {
         const row = await one('SELECT * FROM accounts WHERE email = ?', email);
+        return row ? toAccount(row) : null;
+      },
+
+      async findByUsername(username) {
+        const row = await one('SELECT * FROM accounts WHERE username = ?', username);
         return row ? toAccount(row) : null;
       },
 
@@ -213,13 +222,13 @@ const createD1AuthStore = db => {
     },
 
     accessCodes: {
-      async insert({ name, codeHash, bookIds, resources, bookResources = {}, createdBy, createdAt }) {
+      async insert({ name, codeHash, bookIds, resources, bookResources = {}, accountId = null, codeSecret = null, createdBy, createdAt }) {
         const id = newId();
         await prep(
-          'INSERT INTO access_codes (id, name, code_hash, book_ids, resources, book_resources, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-          id, name, codeHash, JSON.stringify(bookIds), JSON.stringify(resources), JSON.stringify(bookResources), createdBy, createdAt
+          'INSERT INTO access_codes (id, name, code_hash, book_ids, resources, book_resources, account_id, code_secret, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          id, name, codeHash, JSON.stringify(bookIds), JSON.stringify(resources), JSON.stringify(bookResources), accountId, codeSecret, createdBy, createdAt
         ).run();
-        return { id, name, codeHash, bookIds, resources, bookResources, createdBy, createdAt, revokedAt: null, lastUsedAt: null };
+        return { id, name, codeHash, bookIds, resources, bookResources, accountId, codeSecret, createdBy, createdAt, revokedAt: null, lastUsedAt: null };
       },
 
       async findById(id) {
@@ -265,9 +274,9 @@ const createD1AuthStore = db => {
 
       // Only an active code can change its secret. The sessions started with the old secret end in the same
       // batch. Returns how many code rows changed.
-      async replaceHash(id, codeHash) {
+      async replaceHash(id, codeHash, codeSecret = null) {
         const [result] = await db.batch([
-          prep('UPDATE access_codes SET code_hash = ? WHERE id = ? AND revoked_at IS NULL', codeHash, String(id)),
+          prep('UPDATE access_codes SET code_hash = ?, code_secret = ? WHERE id = ? AND revoked_at IS NULL', codeHash, codeSecret, String(id)),
           prep('DELETE FROM sessions WHERE access_code_id = ?', String(id))
         ]);
         return (result.meta && result.meta.changes) || 0;
@@ -289,6 +298,25 @@ const createD1AuthStore = db => {
           return;
         }
         await prep('UPDATE access_codes SET resources = ?, book_resources = ? WHERE id = ?', JSON.stringify(resources), JSON.stringify(bookResources), String(id)).run();
+      },
+
+      async allRegisterIds() {
+        return (await rows('SELECT id FROM loan_registers ORDER BY id')).map(r => r.id);
+      },
+
+      async setOwner(id, accountId) {
+        await prep('UPDATE access_codes SET account_id = ? WHERE id = ?', accountId, String(id)).run();
+      },
+
+      // Deletes every code owned by an account, with its sessions and loan shares. Returns how many codes were removed.
+      async deleteByAccount(accountId) {
+        const ids = (await rows('SELECT id FROM access_codes WHERE account_id = ?', String(accountId))).map(r => r.id);
+        for (const id of ids) {
+          await prep('DELETE FROM sessions WHERE access_code_id = ?', id).run();
+          await prep('DELETE FROM access_code_loans WHERE code_id = ?', id).run();
+          await prep('DELETE FROM access_codes WHERE id = ?', id).run();
+        }
+        return ids.length;
       },
 
       async touch(id, at) {

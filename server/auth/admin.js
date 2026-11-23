@@ -1,16 +1,19 @@
 const { z } = require('zod');
 const { AppError, NotFoundError, ValidationError } = require('../errors');
-const { normalizeEmail } = require('./accounts');
+const { normalizeEmail, normalizeUsername, USERNAME_PATTERN, EMAIL_PATTERN } = require('./accounts');
 const { RESOURCES, effectiveResources, normalizeResources } = require('./resources');
 
 const ROLES = ['viewer', 'editor', 'admin'];
 const membership = z.object({ bookId: z.string().min(1).max(64), role: z.enum(ROLES), resources: z.array(z.enum(RESOURCES)).max(RESOURCES.length).optional() });
 
+const ident = a => a.email || a.username;
+
 const loanMembership = z.object({ registerId: z.string().min(1).max(64), role: z.enum(ROLES) });
 
 const schemas = {
   create: z.object({
-    email: z.string().min(3).max(200),
+    username: z.string().max(40).optional(),
+    email: z.string().max(200).optional().default(''),
     name: z.string().trim().min(1).max(120),
     password: z.string().min(1).max(200),
     memberships: z.array(membership).max(50).default([]),
@@ -22,6 +25,8 @@ const schemas = {
   memberships: z.object({ memberships: z.array(membership).max(50) }),
   loanMemberships: z.object({ loanMemberships: z.array(loanMembership).max(200) }),
   resources: z.object({ resources: z.array(z.enum(RESOURCES)).max(RESOURCES.length).nullable() }).strict(),
+  profile: z.object({ name: z.string().trim().min(1).max(120).optional(), username: z.string().max(40).optional(), email: z.string().max(200).nullable().optional() }).strict()
+    .refine(o => Object.keys(o).length > 0, 'nothing to change'),
   status: z.object({ disabled: z.boolean() }),
   bookRole: z.object({ role: z.enum(ROLES).nullable() }).strict(),
   bookMember: z.object({ email: z.string().min(3).max(200), role: z.enum(ROLES) }).strict(),
@@ -50,7 +55,8 @@ const createAccountAdmin = (store, { accounts, auth }) => {
 
   const toView = a => ({
     id: a.id,
-    email: a.email,
+    username: a.username,
+    email: a.email || '',
     name: a.name,
     isSuperAdmin: Boolean(a.isSuperAdmin),
     disabled: Boolean(a.disabled),
@@ -95,7 +101,7 @@ const createAccountAdmin = (store, { accounts, auth }) => {
   };
 
   const memberView = (a, bookId) => ({
-    accountId: a.id, name: a.name, email: a.email,
+    accountId: a.id, name: a.name, username: a.username, email: a.email || '',
     role: (a.memberships || []).find(m => m.bookId === bookId).role,
     isSuperAdmin: Boolean(a.isSuperAdmin), disabled: Boolean(a.disabled)
   });
@@ -124,18 +130,18 @@ const createAccountAdmin = (store, { accounts, auth }) => {
         memberships = withRole(account, bookId, data.role);
       }
       await store.accounts.update(account.id, { memberships, updatedAt: new Date().toISOString() });
-      await recordEvent(actor, 'book-role', account.email, { bookId, role: data.role });
+      await recordEvent(actor, 'book-role', ident(account), { bookId, role: data.role });
       return data.role === null ? null : memberView(await findAccount(account.id), bookId);
     },
 
     // Adds an existing account (by email) to a book.
     async addBookMember(actor, bookId, body) {
       const data = parse(schemas.bookMember, body);
-      const account = await store.accounts.findByEmail(normalizeEmail(data.email));
-      if (!account) throw new NotFoundError('No account with that email');
+      const account = await accounts.findByLogin(data.email);
+      if (!account) throw new NotFoundError('No account with that username or email');
       if ((account.memberships || []).some(m => m.bookId === bookId)) throw new AppError('Already a member of this book', 409);
       await store.accounts.update(account.id, { memberships: withRole(account, bookId, data.role), updatedAt: new Date().toISOString() });
-      await recordEvent(actor, 'book-role', account.email, { bookId, role: data.role });
+      await recordEvent(actor, 'book-role', ident(account), { bookId, role: data.role });
       return memberView(await findAccount(account.id), bookId);
     },
 
@@ -151,6 +157,7 @@ const createAccountAdmin = (store, { accounts, auth }) => {
       await checkBooks(data.memberships);
       await checkRegisters(data.loanMemberships);
       const account = await accounts.create({
+        username: data.username,
         email: data.email,
         name: data.name,
         password: data.password,
@@ -159,7 +166,7 @@ const createAccountAdmin = (store, { accounts, auth }) => {
         loanMemberships: data.loanMemberships,
         resources: derivedPages(data.memberships, data.loanMemberships) ?? (Array.isArray(data.resources) ? normalizeResources(data.resources) : null)
       });
-      await recordEvent(actor, 'create', normalizeEmail(data.email), { memberships: data.memberships, loanMemberships: data.loanMemberships, resources: data.resources ?? null });
+      await recordEvent(actor, 'create', normalizeEmail(data.email) || data.username, { memberships: data.memberships, loanMemberships: data.loanMemberships, resources: data.resources ?? null });
       return toView(await findAccount(account.id));
     },
 
@@ -173,7 +180,37 @@ const createAccountAdmin = (store, { accounts, auth }) => {
       if (!data.isSuperAdmin) await keepOneSuperAdmin(account);
       await store.accounts.update(account.id, { isSuperAdmin: data.isSuperAdmin, updatedAt: new Date().toISOString() });
       await store.sessions.deleteByAccount(account.id); // sign them in again with the new rights
-      await recordEvent(actor, 'admin-type', account.email, { isSuperAdmin: data.isSuperAdmin });
+      await recordEvent(actor, 'admin-type', ident(account), { isSuperAdmin: data.isSuperAdmin });
+      return toView(await findAccount(account.id));
+    },
+
+    // Name, username and email. The username cannot be empty (it is how people sign in); the email may be cleared.
+    async setProfile(actor, id, body) {
+      const data = parse(schemas.profile, body);
+      const account = await findAccount(id);
+      const changes = {};
+      if (data.name !== undefined) changes.name = data.name;
+      if (data.username !== undefined) {
+        const username = normalizeUsername(data.username);
+        if (!USERNAME_PATTERN.test(username)) throw new ValidationError('Username: 2-40 letters, digits, dots, dashes or underscores, starting with a letter or digit');
+        const taken = username !== account.username && await store.accounts.findByUsername(username);
+        if (taken) throw new ValidationError('That username is already taken');
+        changes.username = username;
+      }
+      if (data.email !== undefined) {
+        const email = data.email === null ? '' : normalizeEmail(data.email);
+        if (email && !EMAIL_PATTERN.test(email)) throw new ValidationError('A valid email address is required');
+        const taken = email && email !== account.email && await store.accounts.findByEmail(email);
+        if (taken) throw new ValidationError('That email is already used by another account');
+        changes.email = email || null;
+      }
+      try {
+        await store.accounts.update(account.id, { ...changes, updatedAt: new Date().toISOString() });
+      } catch (error) {
+        if (/UNIQUE constraint failed/i.test(String((error && error.message) || ''))) throw new ValidationError('That username or email is already used by another account');
+        throw error;
+      }
+      await recordEvent(actor, 'profile', ident(account), changes);
       return toView(await findAccount(account.id));
     },
 
@@ -183,7 +220,7 @@ const createAccountAdmin = (store, { accounts, auth }) => {
       const account = await findAccount(id);
       const resources = data.resources === null ? null : normalizeResources(data.resources);
       await store.accounts.update(account.id, { resources, updatedAt: new Date().toISOString() });
-      await recordEvent(actor, 'resources', account.email, { resources });
+      await recordEvent(actor, 'resources', ident(account), { resources });
       return toView(await findAccount(account.id));
     },
 
@@ -193,7 +230,7 @@ const createAccountAdmin = (store, { accounts, auth }) => {
       await checkBooks(data.memberships);
       const derived = derivedPages(data.memberships, account.loanMemberships);
       await store.accounts.update(account.id, { memberships: data.memberships, ...(derived ? { resources: derived } : {}), updatedAt: new Date().toISOString() });
-      await recordEvent(actor, 'memberships', account.email, { memberships: data.memberships });
+      await recordEvent(actor, 'memberships', ident(account), { memberships: data.memberships });
       return toView(await findAccount(account.id));
     },
 
@@ -203,7 +240,7 @@ const createAccountAdmin = (store, { accounts, auth }) => {
       await checkRegisters(data.loanMemberships);
       const derived = derivedPages(account.memberships, data.loanMemberships);
       await store.accounts.update(account.id, { loanMemberships: data.loanMemberships, ...(derived ? { resources: derived } : {}), updatedAt: new Date().toISOString() });
-      await recordEvent(actor, 'loan-memberships', account.email, { loanMemberships: data.loanMemberships });
+      await recordEvent(actor, 'loan-memberships', ident(account), { loanMemberships: data.loanMemberships });
       return toView(await findAccount(account.id));
     },
 
@@ -216,15 +253,15 @@ const createAccountAdmin = (store, { accounts, auth }) => {
       if (data.disabled) await keepOneSuperAdmin(account);
       await store.accounts.update(account.id, { disabled: data.disabled, updatedAt: new Date().toISOString() });
       if (data.disabled) await auth.signOutAccount(account.id);
-      await recordEvent(actor, data.disabled ? 'disable' : 'enable', account.email);
+      await recordEvent(actor, data.disabled ? 'disable' : 'enable', ident(account));
       return toView(await findAccount(account.id));
     },
 
     async resetPassword(actor, id, body) {
       const data = parse(schemas.password, body);
       const account = await findAccount(id);
-      await accounts.resetPassword(account.email, data.password);
-      await recordEvent(actor, 'password-reset', account.email);
+      await accounts.resetPassword(account.username, data.password);
+      await recordEvent(actor, 'password-reset', ident(account));
       return { ok: true };
     },
 
@@ -234,8 +271,9 @@ const createAccountAdmin = (store, { accounts, auth }) => {
       if (account.id === actor.id) throw new ValidationError('You cannot delete your own account');
       await keepOneSuperAdmin(account);
       await auth.signOutAccount(account.id);
+      const codes = await store.accessCodes.deleteByAccount(account.id); // their access codes go with them
       await store.accounts.delete(account.id);
-      await recordEvent(actor, 'delete', account.email);
+      await recordEvent(actor, 'delete', ident(account), { accessCodesDeleted: codes });
       return { ok: true };
     }
   };

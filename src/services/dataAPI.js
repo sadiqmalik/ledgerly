@@ -32,14 +32,15 @@ const dataAPI = {
 
   // Access codes (super administrators). The plaintext code is only in the create response.
   listAccessCodes: async () => (await api.get('/admin/access-codes')).data.accessCodes,
-  createAccessCode: async (name, bookIds, code = '', resources, bookResources) =>
-    (await api.post('/admin/access-codes', { name, bookIds, code, ...(resources ? { resources } : {}), ...(bookResources ? { bookResources } : {}) })).data.accessCode,
-  setAccessCodeResources: async (id, resources, bookResources, bookIds) =>
-    (await api.put(`/admin/access-codes/${encodeURIComponent(id)}/resources`, { resources, ...(bookResources ? { bookResources } : {}), ...(bookIds ? { bookIds } : {}) })).data.accessCode,
+  createAccessCode: async (name, bookIds, code = '', resources, bookResources, accountId) =>
+    (await api.post('/admin/access-codes', { name, bookIds, code, ...(resources ? { resources } : {}), ...(bookResources ? { bookResources } : {}), ...(accountId ? { accountId } : {}) })).data.accessCode,
+  setAccessCodeResources: async (id, resources, bookResources, bookIds, accountId) =>
+    (await api.put(`/admin/access-codes/${encodeURIComponent(id)}/resources`, { resources, ...(bookResources ? { bookResources } : {}), ...(bookIds ? { bookIds } : {}), ...(accountId ? { accountId } : {}) })).data.accessCode,
   resetAccessCode: async (id, code = '') =>
     (await api.post(`/admin/access-codes/${encodeURIComponent(id)}/reset`, { code })).data.accessCode,
   restoreAccessCode: async id => (await api.post(`/admin/access-codes/${encodeURIComponent(id)}/restore`, {})).data.accessCode,
   revokeAccessCode: async id => (await api.post(`/admin/access-codes/${encodeURIComponent(id)}/revoke`, {})).data.accessCode,
+  revealAccessCode: async id => (await api.get(`/admin/access-codes/${encodeURIComponent(id)}/reveal`)).data.code,
   deleteAccessCode: async id => (await api.delete(`/admin/access-codes/${encodeURIComponent(id)}`)).data.deleted,
 
   // Books the signed-in account can access

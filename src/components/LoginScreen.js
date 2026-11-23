@@ -52,11 +52,13 @@ function LoginScreen({ notice }) {
         ) : (
           <>
         <div className="form-group">
-          <label htmlFor="login-email">Email</label>
+          <label htmlFor="login-email">Username or email</label>
           <input
             id="login-email"
-            type="email"
+            type="text"
             autoComplete="username"
+            autoCapitalize="none"
+            spellCheck={false}
             value={email}
             onChange={e => setEmail(e.target.value)}
             required
@@ -84,7 +86,7 @@ function LoginScreen({ notice }) {
           className="btn btn-link login-switch"
           onClick={() => { setMode(mode === 'code' ? 'password' : 'code'); setError(''); }}
         >
-          {mode === 'code' ? 'Sign in with email and password' : 'Use an access code instead'}
+          {mode === 'code' ? 'Sign in with username or email' : 'Use an access code instead'}
         </button>
       </form>
     </div>

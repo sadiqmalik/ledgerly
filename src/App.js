@@ -64,10 +64,11 @@ const isLoansRoute = route => route === '/loans' || route.startsWith('/loans/');
 // Loan registers do not depend on the selected ledger, so they render outside LedgerProvider.
 function LoansOrNothing({ route }) {
   const { account } = useAuth();
+  const allowed = hasResource(account, 'loans') && (account?.isSuperAdmin || (account?.loanMemberships || []).length > 0);
   useEffect(() => {
-    if (!hasResource(account, 'loans')) window.location.replace('#/');
-  }, [account]);
-  return hasResource(account, 'loans') ? <Loans key={route.startsWith('/loans/') ? 'one' : 'list'} /> : null;
+    if (!allowed) window.location.replace('#/');
+  }, [allowed]);
+  return allowed ? <Loans key={route.startsWith('/loans/') ? 'one' : 'list'} /> : null;
 }
 
 function App() {

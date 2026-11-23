@@ -73,7 +73,7 @@ async function buildXlsx(data) {
 }
 
 export default function DataTab() {
-  const { book, role } = useLedger();
+  const { book, role, can } = useLedger();
   const isAdmin = role === 'admin';
   const [year, setYear] = useState('');
   const [busy, setBusy] = useState('');
@@ -107,6 +107,7 @@ export default function DataTab() {
     <div className="w-full space-y-4">
       {error && <p role="alert" className="text-sm text-negative">{error}</p>}
       <div className="grid items-start gap-4 grid-cols-[repeat(auto-fit,minmax(min(100%,22rem),1fr))]">
+      {(isAdmin || role === 'editor') && (can('ledger') || can('projects')) && (
       <div className="space-y-2 rounded-xl border border-border bg-card p-4">
         <h3 className="font-medium text-foreground">Entries (CSV)</h3>
         <div className="flex flex-wrap items-center gap-2">
@@ -117,6 +118,7 @@ export default function DataTab() {
           <button type="button" className={btnSecondary} disabled={Boolean(busy)} onClick={csv}>{busy === 'csv' ? 'Preparing...' : 'Download CSV'}</button>
         </div>
       </div>
+      )}
       {isAdmin && (
         <div className="space-y-2 rounded-xl border border-border bg-card p-4">
           <h3 className="font-medium text-foreground">Full book (admin)</h3>

@@ -231,17 +231,44 @@ const registerLedgerRoutes = (app, { repo }) => {
       const touchesFund = body.fundId !== undefined && body.fundId !== old.fund_id;
       const touchesDir = body.direction !== undefined && body.direction !== old.direction;
       const touchesAmount = body.amount !== undefined && body.amount !== old.amount;
-      const allowed = ['date', 'comment', 'amount', 'fundId', 'direction'];
+      // A transfer is edited as a pair: date, comment, party, project and "excluded" go to both legs; the amount goes to both
+      // legs for one currency and to this leg only for a conversion; the fund moves this leg only. The direction and the
+      // category define the transfer, so they stay (delete and recreate to change them).
+      const allowed = ['date', 'comment', 'amount', 'fundId', 'direction', 'partyId', 'partyName', 'projectId', 'exclude'];
       const otherKeys = Object.keys(body).filter(k => !allowed.includes(k));
-      if (touchesFund || touchesDir || (touchesAmount && cross) || otherKeys.length) {
-        throw new AppError('delete and recreate', 409);
+      if (touchesDir || otherKeys.length) throw new AppError('delete and recreate', 409);
+      const own = {};
+      if (touchesFund) {
+        const fund = await L.inBook('funds', b, body.fundId);
+        if (!fund) throw notFound('Fund');
+        assertActive(fund);
+        if (fund.currency !== old.currency) throw new AppError('A transfer leg can only move to a fund with the same currency; delete and recreate the transfer', 409);
+        if (fund.id === other.fund_id) throw new AppError('Both legs of a transfer cannot be in the same fund', 409);
+        own.fundId = fund.id;
+        own.currency = fund.currency;
       }
       const shared = {};
       if (body.date !== undefined) shared.date = body.date;
       if (body.comment !== undefined) shared.comment = body.comment;
-      if (touchesAmount) shared.amount = body.amount;
-      const stmts = [old.id, other.id].map(i => L.updateEntryStmt(b, i, { ...shared, updatedAt: now }));
-      await L.batch(stmts);
+      if (body.exclude !== undefined) shared.exclude = body.exclude;
+      if (body.projectId !== undefined) {
+        if (body.projectId !== null) await checkRefs(b, { projectId: body.projectId }, old.project_id);
+        shared.projectId = body.projectId;
+      }
+      let partyStmt = null;
+      if (body.partyId !== undefined || body.partyName !== undefined) {
+        const party = await resolveParty(b, body);
+        shared.partyId = party.partyId ?? null;
+        partyStmt = party.stmt || null;
+      }
+      if (touchesAmount) (cross ? own : shared).amount = body.amount;
+      try {
+        await L.batch([
+          ...(partyStmt ? [partyStmt] : []),
+          L.updateEntryStmt(b, old.id, { ...shared, ...own, updatedAt: now }),
+          L.updateEntryStmt(b, other.id, { ...shared, updatedAt: now })
+        ]);
+      } catch (error) { L.uniqueToConflict(error); }
       return c.json((await L.getEntries(b, [old.id]))[0]);
     }
 

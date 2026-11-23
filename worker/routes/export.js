@@ -1,5 +1,9 @@
-// GET /export?format=json (admin) or format=csv&year= (viewer).
+// GET /export?format=json (ledger Admin) or format=csv&year= (editor or Admin). Only for people who can change data, and
+// only the parts their pages in this ledger show: Ledger (entries and the lists they use), Projects (project entries),
+// Documents, Item Vault.
 const { z, parse, need, notFound } = require('./validate');
+const { hasResource, forBook } = require('../../server/auth/resources');
+const { ForbiddenError } = require('../../server/errors');
 const { entriesCsv } = require('../../server/csv');
 
 const query = z.object({
@@ -12,10 +16,12 @@ const registerExportRoutes = (app, { repo }) => {
   app.get('/api/books/:b/export', async c => {
     const b = c.req.param('b');
     const q = parse(query, c.req.query());
+    const pages = forBook(c.get('account'), b);
+    const scope = { ledger: hasResource(pages, 'ledger'), projects: hasResource(pages, 'projects'), documents: hasResource(pages, 'documents'), items: hasResource(pages, 'items') };
     if (q.format === 'json') {
       need(c, 'admin');
       const now = new Date();
-      const data = await repo.exportRepo.exportBook(b, now);
+      const data = await repo.exportRepo.exportBook(b, now, scope);
       if (!data) throw notFound('Book');
       return new Response(JSON.stringify(data), {
         headers: {
@@ -25,7 +31,9 @@ const registerExportRoutes = (app, { repo }) => {
         }
       });
     }
-    const csv = entriesCsv(await repo.exportRepo.csvRows(b, q.year));
+    need(c, 'editor');
+    if (!scope.ledger && !scope.projects) throw new ForbiddenError('This account cannot export entries');
+    const csv = entriesCsv(await repo.exportRepo.csvRows(b, q.year, { projectOnly: !scope.ledger }));
     return new Response(csv, {
       headers: {
         'Content-Type': 'text/csv; charset=utf-8',

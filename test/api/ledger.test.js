@@ -260,8 +260,10 @@ describe('ledger data API', () => {
     assert.equal((await viewer.post(`${U}/transfers`).send({ date: '2026-01-12', fromFundId: 'special', toFundId: 'checking', amount: 1 })).status, 403);
 
     const fund = await editor.put(`${U}/entries/${dr.id}`).send({ fundId: 'usd' });
-    assert.equal(fund.status, 409);
-    assert.equal(fund.body.error, 'delete and recreate');
+    assert.equal(fund.status, 409); // another currency would turn it into a conversion
+    assert.match(fund.body.error, /same currency/);
+    assert.equal((await editor.put(`${U}/entries/${dr.id}`).send({ fundId: 'checking' })).status, 409); // the other leg is there
+    assert.equal((await editor.put(`${U}/entries/${dr.id}`).send({ direction: 'cr' })).status, 409);
     const amount = await editor.put(`${U}/entries/${dr.id}`).send({ amount: 7000, date: '2026-01-13', comment: 'x' });
     assert.equal(amount.status, 200);
     const legs = (await ctx.api.get(`${U}/entries`)).body.rows;
@@ -269,6 +271,26 @@ describe('ledger data API', () => {
 
     assert.equal((await editor.delete(`${U}/entries/${cr.id}`)).status, 200);
     assert.equal((await ctx.api.get(`${U}/entries`)).body.count, 0);
+  });
+
+  it('edits a transfer as a pair: party, project and excluded go to both legs, the fund moves one leg', async () => {
+    await ctx.d1.batch([
+      ctx.d1.prepare('INSERT INTO funds (id, book_id, name, is_reserved, currency, kind) VALUES (?,?,?,?,?,?)').bind('savings', BOOK, 'Savings', 0, 'PKR', 'general'),
+      ctx.d1.prepare("INSERT INTO projects (id, book_id, name, kind, status, created_at) VALUES ('p1', ?, 'Roof', 'general', 'open', 'now')").bind(BOOK)
+    ]);
+    const res = await editor.post(`${U}/transfers`).send({ date: '2026-01-12', fromFundId: 'special', toFundId: 'checking', amount: 5000 });
+    const [dr, cr] = res.body.entries;
+    const put = await editor.put(`${U}/entries/${cr.id}`).send({ partyName: 'Dana', projectId: 'p1', exclude: true, fundId: 'savings' });
+    assert.equal(put.status, 200);
+    const rows = (await ctx.api.get(`${U}/entries?pageSize=10`)).body.rows.filter(r => r.linkId === res.body.linkId);
+    assert.equal(rows.length, 2);
+    for (const r of rows) {
+      assert.equal(r.partyName, 'Dana'); assert.equal(r.projectId, 'p1'); assert.equal(Boolean(r.exclude), true);
+    }
+    assert.equal(rows.find(r => r.id === cr.id).fundId, 'savings');
+    assert.equal(rows.find(r => r.id === dr.id).fundId, 'special'); // the other leg keeps its fund
+    assert.equal((await editor.put(`${U}/entries/${cr.id}`).send({ projectId: 'missing' })).status, 404);
+    assert.equal((await viewer.put(`${U}/entries/${cr.id}`).send({ comment: 'x' })).status, 403);
   });
 
   it('handles cross-currency transfers', async () => {
@@ -279,7 +301,10 @@ describe('ledger data API', () => {
     assert.equal(ok.status, 201);
     const [dr, cr] = ok.body.entries;
     assert.equal(cr.amount, 100); assert.equal(cr.currency, 'USD'); assert.equal(cr.categoryName, 'Conversion');
-    assert.equal((await ctx.api.put(`${U}/entries/${dr.id}`).send({ amount: 30000 })).status, 409);
+    // A conversion's amount is edited per leg: only this leg changes.
+    assert.equal((await ctx.api.put(`${U}/entries/${dr.id}`).send({ amount: 30000 })).status, 200);
+    const rows = (await ctx.api.get(`${U}/entries`)).body.rows;
+    assert.deepEqual(rows.filter(r => r.linkId === ok.body.linkId).map(r => [r.currency, r.amount]).sort(), [['PKR', 30000], ['USD', 100]]);
     assert.equal((await ctx.api.put(`${U}/entries/${dr.id}`).send({ comment: 'ok' })).status, 200);
   });
 

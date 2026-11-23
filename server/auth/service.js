@@ -11,7 +11,8 @@ const hashSid = sid => crypto.createHash('sha256').update(sid).digest('hex');
 
 const publicAccount = account => ({
   id: String(account.id),
-  email: account.email,
+  username: account.username || '',
+  email: account.email || '',
   name: account.name,
   isSuperAdmin: Boolean(account.isSuperAdmin),
   memberships: account.memberships || [],
@@ -21,9 +22,9 @@ const publicAccount = account => ({
 });
 
 // store: the D1 storage object from stores/d1.js (repo.authStore).
-const createAuthService = (store, { idleMinutes = 720, absoluteDays = 7, cookieSecure = true } = {}) => {
+const createAuthService = (store, { idleMinutes = 720, absoluteDays = 7, cookieSecure = true, codeKey = '' } = {}) => {
   const accounts = createAccountStore(store);
-  const accessCodes = createAccessCodeService(store);
+  const accessCodes = createAccessCodeService(store, { codeKey });
   const sessions = store.sessions;
   const idleMs = idleMinutes * 60 * 1000;
   const absoluteMs = absoluteDays * 24 * 60 * 60 * 1000;
@@ -98,15 +99,16 @@ const createAuthService = (store, { idleMinutes = 720, absoluteDays = 7, cookieS
     readCookie,
     createSession,
 
-    async login(email, password) {
-      const account = await accounts.authenticate(email, password);
+    async login(login, password) {
+      const account = await accounts.authenticate(login, password);
       const sid = await createSession(account.id);
       return { sid, account: publicAccount(account) };
     },
 
     async loginWithCode(code, clientId) {
       const saved = await accessCodes.authenticate(code, clientId);
-      const principal = accessCodes.principalFor(saved, await store.accessCodes.loanIds(saved.id));
+      const principal = await accessCodes.principal(saved);
+      if (!principal) throw new AuthError('Invalid access code'); // its owner is disabled or gone
       const sid = await createSession(principal.id, saved.id);
       // A revoke or reset can land between the check and the insert; do not hand out a session for a code that
       // is revoked or whose secret changed. A reset after this check deletes the session atomically.

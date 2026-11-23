@@ -77,7 +77,7 @@ const makeContext = async ({ docs = true } = {}) => {
   await resetD1(d1);
   const repo = createRepo(d1);
   await createAccountStore(repo.authStore).create({ ...TESTER, isSuperAdmin: true });
-  const auth = createAuthService(repo.authStore, { cookieSecure: false });
+  const auth = createAuthService(repo.authStore, { cookieSecure: false, codeKey: 'test code key' });
   const { sid } = await auth.login(TESTER.email, TESTER.password);
   const cookie = `lsid=${sid}`;
   const bucket = docs ? makeFakeR2() : null;

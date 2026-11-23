@@ -12,11 +12,13 @@ const main = async () => {
   const remote = Boolean(args.remote);
   const email = String(args.email || '').trim().toLowerCase();
   const name = String(args.name || '').trim();
-  if (!email || !name) {
-    console.error('Usage: create-admin.js [--remote] --email <email> --name "<name>"');
+  const username = String(args.username || (email ? email.split('@')[0].replace(/[^a-z0-9._-]+/g, '-') : '')).trim().toLowerCase();
+  if ((!email && !args.username) || !name) {
+    console.error('Usage: create-admin.js [--remote] [--username <name>] [--email <email>] --name "<name>"');
     process.exit(2);
   }
-  if (!validEmail(email)) throw new Error('A valid email address is required');
+  if (email && !validEmail(email)) throw new Error('A valid email address is required');
+  if (!/^[a-z0-9][a-z0-9._-]{1,39}$/.test(username)) throw new Error('Username: 2-40 letters, digits, dots, dashes or underscores');
 
   const password = await readSecret('New password (min 6 characters, hidden): ');
   if (password.length < MIN_PASSWORD_LENGTH) {
@@ -28,11 +30,11 @@ const main = async () => {
 
   const passwordHash = await hashPassword(password);
   const now = new Date().toISOString();
-  runSql(`INSERT INTO accounts (id, email, name, password_hash, is_super_admin, memberships, disabled, failed_logins, locked_until, last_login_at, created_at, updated_at) VALUES (${[
-    sqlString(newAccountId()), sqlString(email), sqlString(name), sqlString(passwordHash),
+  runSql(`INSERT INTO accounts (id, username, email, name, password_hash, is_super_admin, memberships, disabled, failed_logins, locked_until, last_login_at, created_at, updated_at) VALUES (${[
+    sqlString(newAccountId()), sqlString(username), email ? sqlString(email) : 'NULL', sqlString(name), sqlString(passwordHash),
     '1', "'[]'", '0', '0', 'NULL', 'NULL', sqlString(now), sqlString(now)
   ].join(', ')});`, { remote });
-  console.log(`Super administrator created: ${email} (${remote ? 'LIVE database' : 'local database'})`);
+  console.log(`Super administrator created: ${username} (${remote ? 'LIVE database' : 'local database'})`);
 };
 
 main().catch(error => {

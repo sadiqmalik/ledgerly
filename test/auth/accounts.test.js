@@ -45,12 +45,36 @@ describe('accounts (D1)', () => {
     const now = new Date().toISOString();
     const legacyHash = '$argon2id$v=19$m=65536,t=3,p=4$c2FsdHNhbHRzYWx0$aGFzaGhhc2hoYXNoaGFzaGhhc2hoYXNo';
     await ctx.repo.authStore.accounts.insert({
-      email: 'legacy@example.com', name: 'Legacy', passwordHash: legacyHash, isSuperAdmin: false, memberships: [],
+      username: 'legacy', email: 'legacy@example.com', name: 'Legacy', passwordHash: legacyHash, isSuperAdmin: false, memberships: [],
       disabled: false, failedLogins: 0, lockedUntil: null, lastLoginAt: null, createdAt: now, updatedAt: now
     });
     const refused = await store.authenticate('legacy@example.com', PASSWORD).catch(e => e);
     assert.equal(refused.status, 401);
     assert.equal((await storedRow('legacy@example.com')).password_hash, legacyHash);
+  });
+
+  it('signs in with a username or an email, and either is case-insensitive', async () => {
+    await store.create({ username: 'Sam.K', email: 'sam@example.com', name: 'Sam', password: PASSWORD });
+    assert.equal((await store.authenticate('sam.k', PASSWORD)).username, 'sam.k');
+    assert.equal((await store.authenticate('SAM@Example.com', PASSWORD)).username, 'sam.k');
+    assert.equal((await store.authenticate('Sam.K', 'wrong password')
+      .catch(e => e)).status, 401);
+  });
+
+  it('makes a username from the email when none is given, numbering a clash', async () => {
+    const one = await store.create({ email: 'ali@example.com', name: 'Ali', password: PASSWORD });
+    const two = await store.create({ email: 'ali@example.org', name: 'Ali 2', password: PASSWORD });
+    assert.equal(one.username, 'ali');
+    assert.equal(two.username, 'ali2');
+  });
+
+  it('allows an account without an email, and refuses a bad or taken username', async () => {
+    const made = await store.create({ username: 'kiosk', name: 'Kiosk', password: PASSWORD });
+    assert.equal(made.email, null);
+    assert.equal((await store.authenticate('kiosk', PASSWORD)).username, 'kiosk');
+    await assert.rejects(() => store.create({ username: 'kiosk', name: 'Again', password: PASSWORD }), /already taken/);
+    await assert.rejects(() => store.create({ username: 'a b', name: 'Bad', password: PASSWORD }), /Username/);
+    await assert.rejects(() => store.create({ name: 'None', password: PASSWORD }), /username or an email/);
   });
 
   it('accepts the right password and records the login', async () => {

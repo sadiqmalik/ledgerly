@@ -34,7 +34,7 @@ const MATRIX = [
   ['get', '/items', ['items']],
   ['post', '/items', ['items']],
   ['get', '/item-locations', ['items']],
-  ['get', '/export?format=csv', ['settings']],
+  ['get', '/export?format=csv', ['ledger', 'projects', 'documents', 'items']],
   ['get', '/members', ['settings']],
   ['put', '', ['settings']],
   ['get', '/profit', ['ledger', 'settings']],

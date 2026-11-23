@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const { z } = require('zod');
-const { DEFAULT_CODE_RESOURCES, RESOURCES, normalizeCodeResources: normalizeResources } = require('./resources');
+const { DEFAULT_CODE_RESOURCES, RESOURCES, normalizeCodeResources: normalizeResources, effectiveResources, forBook } = require('./resources');
+const { seal, open } = require('./secretBox');
 const { AuthError, ConflictError, NotFoundError, RateLimitedError, ValidationError } = require('../errors');
 
 // Access codes: named, revocable, viewer-only sign-in for chosen books.
@@ -42,6 +43,7 @@ const createSchema = z.object({
   name: z.string().trim().min(1).max(80),
   code: z.string().max(200).optional(),
   bookIds: z.array(z.string().min(1).max(64)).min(1).max(50),
+  accountId: z.string().min(1).max(64).optional(),
   resources: z.array(z.enum(RESOURCES)).max(RESOURCES.length).optional(),
   bookResources: z.record(z.string().min(1).max(64), z.array(z.enum(RESOURCES)).max(RESOURCES.length)).optional()
 });
@@ -49,7 +51,8 @@ const createSchema = z.object({
 const resourcesSchema = z.object({
   resources: z.array(z.enum(RESOURCES)).max(RESOURCES.length),
   bookResources: z.record(z.string().min(1).max(64), z.array(z.enum(RESOURCES)).max(RESOURCES.length)).optional(),
-  bookIds: z.array(z.string().min(1).max(64)).min(1).max(50).optional()
+  bookIds: z.array(z.string().min(1).max(64)).min(1).max(50).optional(),
+  accountId: z.string().min(1).max(64).optional()
 }).strict();
 
 // Only the code's own books keep a page list; each is normalised like the global one (no Settings for a code).
@@ -80,9 +83,30 @@ const isUnique = error => /UNIQUE constraint failed/i.test(String((error && erro
 
 const resetSchema = z.object({ code: z.string().max(200).optional() });
 
+// Who may manage codes: a super administrator (all codes), or an account that is an Admin in at least one ledger (only the
+// codes it owns, and only for the ledgers it administers). A code session never can.
+const adminBookIds = actor => (actor.memberships || []).filter(m => m.role === 'admin').map(m => m.bookId);
+const canManageCodes = actor => Boolean(actor && !actor.accessCode && (actor.isSuperAdmin || adminBookIds(actor).length > 0));
+const assertOwns = (actor, code) => {
+  if (!actor.isSuperAdmin && code.accountId !== String(actor.id)) throw new NotFoundError('Access code not found');
+};
+const assertAdminOf = (actor, bookIds) => {
+  if (actor.isSuperAdmin) return;
+  const mine = adminBookIds(actor);
+  const lacking = bookIds.filter(id => !mine.includes(id));
+  if (lacking.length > 0) throw new ValidationError(`You are not an Admin of: ${lacking.join(', ')}`);
+};
+
+// What the owner (an admin account) may see: a super administrator everything, otherwise their ledgers and pages.
+const ownerHasBook = (owner, bookId) => owner.isSuperAdmin || (owner.memberships || []).some(m => m.bookId === bookId);
+const ownerPagesIn = (owner, bookId) => (owner.isSuperAdmin ? [...RESOURCES] : effectiveResources(forBook(owner, bookId)));
+const ownerHasLoan = (owner, registerId) => owner.isSuperAdmin || (owner.loanMemberships || []).some(m => m.registerId === registerId);
+
 // The signed-in principal for a code session. Viewer role only, never super admin.
 // loanIds: the loan registers shared with the code; each becomes a view-only loan membership.
-const principalFor = (code, loanIds = []) => ({
+// owner (optional): the admin the code belongs to. A ledger the owner lacks is dropped; in each ledger the pages are the
+// code's own list (when it has one) or the owner's, and never more than the owner's.
+const principalFor = (code, loanIds = [], owner = null) => owner ? ownedPrincipal(code, loanIds, owner) : ({
   id: `code:${code.id}`,
   email: '',
   name: code.name,
@@ -93,7 +117,28 @@ const principalFor = (code, loanIds = []) => ({
   loanMemberships: loanIds.map(registerId => ({ registerId, role: 'viewer' }))
 });
 
+const ownedPrincipal = (code, loanIds, owner) => {
+  const memberships = code.bookIds.filter(id => ownerHasBook(owner, id)).map(bookId => {
+    const ceiling = ownerPagesIn(owner, bookId);
+    const own = code.bookResources?.[bookId];
+    return { bookId, role: 'viewer', resources: normalizeResources(Array.isArray(own) ? own.filter(k => ceiling.includes(k)) : ceiling) };
+  });
+  return {
+    id: `code:${code.id}`,
+    ownerAccountId: String(owner.id),
+    email: '',
+    name: code.name,
+    isSuperAdmin: false,
+    accessCode: true,
+    resources: normalizeResources(memberships.flatMap(m => m.resources)),
+    memberships,
+    loanMemberships: loanIds.filter(id => ownerHasLoan(owner, id)).map(registerId => ({ registerId, role: 'viewer' }))
+  };
+};
+
 const toView = code => ({
+  accountId: code.accountId ?? null,
+  revealable: Boolean(code.codeSecret),
   id: code.id,
   name: code.name,
   bookIds: code.bookIds,
@@ -112,12 +157,35 @@ const scopeDetail = code => ({ bookIds: code.bookIds });
 const derivedPages = (bookIds, bookResources) => (bookIds.every(id => Array.isArray(bookResources[id]))
   ? normalizeResources(bookIds.flatMap(id => bookResources[id])) : undefined);
 
-const createAccessCodeService = store => {
+const createAccessCodeService = (store, { codeKey = '' } = {}) => {
+  // Codes are kept encrypted so a super administrator can show them again; without a key they are not kept at all.
+  const sealCode = code => (codeKey ? seal(codeKey, code) : Promise.resolve(null));
   const bump = (key, max, lockMs, now) => store.attempts.recordFailure(key, { max, windowMs: WINDOW_MS, lockMs, now });
 
   const isLocked = async (key, now) => {
     const row = await store.attempts.get(key);
     return Boolean(row && row.lockedUntil && new Date(row.lockedUntil) > now);
+  };
+
+  const principal = async code => {
+    const shared = await store.accessCodes.loanIds(code.id);
+    if (!code.accountId) return principalFor(code, shared);
+    const owner = await store.accounts.findById(code.accountId);
+    if (!owner || owner.disabled) return null;
+    // Loans: the registers shared with this code when there are any, otherwise every register its owner may use.
+    // Either way never more than the owner (ownedPrincipal drops the rest).
+    const loanIds = shared.length ? shared
+      : owner.isSuperAdmin ? await store.accessCodes.allRegisterIds()
+        : (owner.loanMemberships || []).map(m => m.registerId);
+    return principalFor(code, loanIds, owner);
+  };
+
+  // The owner must exist and the ledgers must be ones the owner has (a super administrator has them all).
+  const checkOwner = async (accountId, bookIds) => {
+    const owner = await store.accounts.findById(accountId);
+    if (!owner) throw new ValidationError('Unknown admin');
+    const lacking = bookIds.filter(id => !ownerHasBook(owner, id));
+    if (lacking.length > 0) throw new ValidationError(`${owner.username} has no access to: ${lacking.join(', ')}`);
   };
 
   return {
@@ -143,20 +211,27 @@ const createAccessCodeService = store => {
     // The principal for a session's code, or null when the code is gone or revoked.
     async resolve(codeId) {
       const code = await store.accessCodes.findById(codeId);
-      return code && !code.revokedAt ? principalFor(code, await store.accessCodes.loanIds(code.id)) : null;
+      return code && !code.revokedAt ? principal(code) : null;
     },
 
-    async list() {
-      return (await store.accessCodes.list()).map(toView);
+    // The same for a code already found (sign-in). Null when its owner is disabled or gone.
+    principal,
+
+    async list(actor) {
+      const all = await store.accessCodes.list();
+      return (actor && !actor.isSuperAdmin ? all.filter(c => c.accountId === String(actor.id)) : all).map(toView);
     },
 
     // Returns the view plus the code (as entered, or generated), which is not stored and cannot be shown again.
     async create(actor, body) {
       const data = parse(createSchema, body);
+      if (!actor.isSuperAdmin) data.accountId = String(actor.id); // a ledger admin's codes belong to them
       const bookIds = [...new Set(data.bookIds)];
+      assertAdminOf(actor, bookIds);
       const known = new Set(await store.books.existingIds(bookIds));
       const missing = bookIds.filter(id => !known.has(id));
       if (missing.length > 0) throw new ValidationError(`Unknown book: ${missing.join(', ')}`);
+      if (data.accountId) await checkOwner(data.accountId, bookIds);
       const bookResources = cleanBookResources(data.bookResources, bookIds);
       const resources = derivedPages(bookIds, bookResources) ?? normalizeResources(data.resources === undefined ? DEFAULT_CODE_RESOURCES : data.resources);
       const { custom, code } = resolveCode(data.code);
@@ -167,7 +242,7 @@ const createAccessCodeService = store => {
       let saved;
       try {
         saved = await store.accessCodes.insert({
-          name: data.name, codeHash, bookIds, resources, bookResources, createdBy: actor.email, createdAt: now
+          name: data.name, codeHash, bookIds, resources, bookResources, accountId: data.accountId ?? null, codeSecret: await sealCode(code), createdBy: actor.email, createdAt: now
         });
       } catch (error) {
         if (isUnique(error)) throw inUse;
@@ -180,12 +255,28 @@ const createAccessCodeService = store => {
       return { ...toView(saved), code };
     },
 
+    // Shows a code again (super administrators only, written to the audit log). Codes made before this feature, or
+    // without the ACCESS_CODE_KEY secret, cannot be shown: reset them once.
+    async reveal(actor, id) {
+      const code = await store.accessCodes.findById(id);
+      if (!code) throw new NotFoundError('Access code not found');
+      if (code.revokedAt) throw new ConflictError('A revoked access code cannot be shown.');
+      const text = code.codeSecret && codeKey ? await open(codeKey, code.codeSecret) : null;
+      if (!text) throw new NotFoundError('This code cannot be shown. Reset it once to make it viewable.');
+      await store.log.insert({
+        actor: { id: actor.id, email: actor.email }, action: 'reveal-access-code', target: `code:${code.id}`,
+        detail: { name: code.name }, at: new Date().toISOString()
+      });
+      return text;
+    },
+
     // Replaces an active code's secret, keeping its name and scopes. The new code is returned once. Every session
     // started with the old code ends at once and the old code stops working.
     async reset(actor, id, body) {
       const data = parse(resetSchema, body);
       const existing = await store.accessCodes.findById(id);
       if (!existing) throw new NotFoundError('Access code not found');
+      assertOwns(actor, existing);
       if (existing.revokedAt) throw new ConflictError('A revoked access code cannot be reset. Create a new one.');
       const { custom, code } = resolveCode(data.code);
       const codeHash = hashCode(normalizeCode(code));
@@ -194,7 +285,7 @@ const createAccessCodeService = store => {
       if (owner) throw new ValidationError(IN_USE);
       let changed;
       try {
-        changed = await store.accessCodes.replaceHash(existing.id, codeHash);
+        changed = await store.accessCodes.replaceHash(existing.id, codeHash, await sealCode(code));
       } catch (error) {
         if (isUnique(error)) throw new ValidationError(IN_USE);
         throw error;
@@ -213,8 +304,11 @@ const createAccessCodeService = store => {
       const data = parse(resourcesSchema, body);
       const existing = await store.accessCodes.findById(id);
       if (!existing) throw new NotFoundError('Access code not found');
+      assertOwns(actor, existing);
       if (existing.revokedAt) throw new ConflictError('A revoked access code cannot be edited. Create a new one.');
+      if (!actor.isSuperAdmin) delete data.accountId; // only a super administrator can move a code to another admin
       const bookIds = data.bookIds ? [...new Set(data.bookIds)] : existing.bookIds;
+      if (data.bookIds) assertAdminOf(actor, bookIds);
       const bookResources = cleanBookResources(data.bookResources, bookIds);
       const resources = derivedPages(bookIds, bookResources) ?? normalizeResources(data.resources);
       if (data.bookIds) {
@@ -222,7 +316,10 @@ const createAccessCodeService = store => {
         const missing = bookIds.filter(id => !known.has(id));
         if (missing.length > 0) throw new ValidationError(`Unknown book: ${missing.join(', ')}`);
       }
+      const accountId = data.accountId ?? existing.accountId ?? null;
+      if (accountId) await checkOwner(accountId, bookIds);
       await store.accessCodes.setResources(existing.id, resources, bookResources, bookIds);
+      if (accountId !== (existing.accountId ?? null)) await store.accessCodes.setOwner(existing.id, accountId);
       await store.log.insert({
         actor: { id: actor.id, email: actor.email }, action: 'code-resources', target: `code:${existing.id}`,
         detail: { name: existing.name, resources, bookIds, bookResources: data.bookResources ?? null }, at: new Date().toISOString()
@@ -234,6 +331,7 @@ const createAccessCodeService = store => {
     async revoke(actor, id) {
       const code = await store.accessCodes.findById(id);
       if (!code) throw new NotFoundError('Access code not found');
+      assertOwns(actor, code);
       const now = new Date().toISOString();
       await store.accessCodes.revoke(code.id, now);
       await store.sessions.deleteByAccessCode(code.id);
@@ -248,6 +346,7 @@ const createAccessCodeService = store => {
     async restore(actor, id) {
       const code = await store.accessCodes.findById(id);
       if (!code) throw new NotFoundError('Access code not found');
+      assertOwns(actor, code);
       if (!code.revokedAt) throw new ConflictError('This access code is not revoked');
       await store.accessCodes.restore(code.id);
       await store.log.insert({
@@ -261,6 +360,7 @@ const createAccessCodeService = store => {
     async remove(actor, id) {
       const code = await store.accessCodes.findById(id);
       if (!code) throw new NotFoundError('Access code not found');
+      assertOwns(actor, code);
       if (!(await store.accessCodes.remove(code.id))) throw new NotFoundError('Access code not found');
       await store.log.insert({
         actor: { id: actor.id, email: actor.email }, action: 'delete-access-code', target: `code:${code.id}`,
@@ -271,4 +371,4 @@ const createAccessCodeService = store => {
   };
 };
 
-module.exports = { createAccessCodeService, generateCode, normalizeCode, hashCode, principalFor, IP_MAX_FAILURES };
+module.exports = { canManageCodes, createAccessCodeService, generateCode, normalizeCode, hashCode, principalFor, IP_MAX_FAILURES };

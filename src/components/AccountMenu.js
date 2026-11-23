@@ -63,14 +63,14 @@ function AccountMenu() {
         aria-expanded={open}
         onClick={() => setOpen(o => !o)}
       >
-        <span className="account-avatar" aria-hidden="true">{(account.name || account.email || '?').charAt(0).toUpperCase()}</span>
-        <span className="account-name">{account.name || account.email}</span>
+        <span className="account-avatar" aria-hidden="true">{(account.name || account.username || account.email || '?').charAt(0).toUpperCase()}</span>
+        <span className="account-name">{account.name || account.username || account.email}</span>
       </button>
       {open && (
         <div className="account-panel" role="menu">
           <div className="account-id">
             <div className="account-title">{account.name}</div>
-            {account.email && <div className="account-email">{account.email}</div>}
+            {(account.username || account.email) && <div className="account-email">{account.username}{account.username && account.email ? ' · ' : ''}{account.email}</div>}
             <div className="account-role">{roleText}</div>
           </div>
           {!changing ? (

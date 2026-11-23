@@ -79,7 +79,7 @@ export function Members({ bookId, selfId }) {
       await api.post(`/books/${bookId}/members`, { email: email.trim(), role });
       setEmail(''); reload();
     } catch (ex) {
-      setErr(ex.response?.status === 404 ? 'No account with that email — ask a super admin to create it.' : errorMessage(ex));
+      setErr(ex.response?.status === 404 ? 'No account with that username or email: ask a super admin to create it.' : errorMessage(ex));
     }
   };
 
@@ -94,14 +94,14 @@ export function Members({ bookId, selfId }) {
           return (
             <li key={m.accountId} className="flex min-w-0 flex-col gap-2 rounded-lg border border-border bg-background p-2.5">
               <div className="min-w-0">
-                <div className="truncate text-sm font-semibold">{m.name || m.email}{m.disabled ? ' (disabled)' : ''}{m.isSuperAdmin ? ' (super admin)' : ''}</div>
+                <div className="truncate text-sm font-semibold">{m.name || m.username}{m.disabled ? ' (disabled)' : ''}{m.isSuperAdmin ? ' (super admin)' : ''}</div>
                 <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-2 text-xs">
-                  <dt className="text-muted-foreground">Email</dt>
-                  <dd className="truncate">{m.email}</dd>
+                  <dt className="text-muted-foreground">User</dt>
+                  <dd className="truncate">{m.username}{m.email ? ` · ${m.email}` : ''}</dd>
                 </dl>
               </div>
               <div className="mt-auto flex flex-wrap items-center justify-between gap-2">
-                <Select aria-label={`Role of ${m.email}`} className="rounded-md border border-border bg-background px-1.5 py-1 text-xs" value={m.role} disabled={self}
+                <Select aria-label={`Role of ${m.username}`} className="rounded-md border border-border bg-background px-1.5 py-1 text-xs" value={m.role} disabled={self}
                   title={self ? 'You cannot change your own role' : undefined} onChange={e => setRoleOf(m.accountId, e.target.value)}>
                   <option value="viewer">viewer</option><option value="editor">editor</option><option value="admin">admin</option>
                 </Select>
@@ -113,8 +113,8 @@ export function Members({ bookId, selfId }) {
       </ul>
       <form onSubmit={add} className="flex flex-wrap items-end gap-2">
         <div className="min-w-0 flex-1" style={{ minWidth: '12rem' }}>
-          <Field label="Add member by email">
-            <input type="email" className={inputCls} value={email} onChange={e => setEmail(e.target.value)} required placeholder="name@example.com" />
+          <Field label="Add member by username or email">
+            <input className={inputCls} value={email} onChange={e => setEmail(e.target.value)} required placeholder="username or name@example.com" autoCapitalize="none" spellCheck={false} />
           </Field>
         </div>
         <Select aria-label="Role" className="rounded-md border border-border bg-background px-2 py-2 text-sm" value={role} onChange={e => setRole(e.target.value)}>

@@ -36,6 +36,21 @@ describe('loans shared with access codes', () => {
     assert.equal((await codeApi.get(`/api/loans/${regA.id}/entries`)).status, 403);
   });
 
+  it('a code owned by an admin inherits the loans that admin may use', async () => {
+    const owner = (await ctx.api.post('/api/admin/accounts').send({
+      username: 'loanowner', name: 'Loan Owner', password: PASS,
+      memberships: [{ bookId: BOOK, role: 'editor', resources: ['dashboard', 'loans'] }],
+      loanMemberships: [{ registerId: regB.id, role: 'editor' }]
+    }).expect(201)).body.account;
+    const owned = (await ctx.api.post('/api/admin/access-codes').send({ name: 'Owned', bookIds: [BOOK], accountId: owner.id }).expect(201)).body.accessCode;
+    const api = await signIn(owned.code);
+    const list = (await api.get('/api/loans').expect(200)).body;
+    assert.deepEqual(list.map(r => [r.id, r.role]), [[regB.id, 'viewer']]); // the owner's loan, view only; not regA
+    assert.equal((await api.get(`/api/loans/${regA.id}`)).status, 403);
+    assert.equal((await api.post(`/api/loans/${regB.id}/entries`).send(entry)).status, 403);
+    await ctx.api.delete(`/api/admin/accounts/${owner.id}`).expect(200); // takes its code with it, so later tests see the same codes
+  });
+
   it('sharing a loan makes it readable, and only readable', async () => {
     const res = await share(regA.id, [code.id]);
     assert.equal(res.status, 200);
