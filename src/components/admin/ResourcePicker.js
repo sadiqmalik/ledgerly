@@ -36,7 +36,7 @@ export function BookPages({ bookName, value, onChange, forCode = false, disabled
 // Ledgers for an access code, one card each: the ledger's name with an Access switch and, while it is on, an "Own pages"
 // switch. Off: the code inherits its owner's pages in that ledger (shown as a line). On: the code has its own list,
 // limited to what the owner has. own[id] is the code's own list (undefined = inherits); inheritedOf(id) the owner's pages.
-export function LedgerPages({ books, selected, onSelect, own, onOwn, inheritedOf, allowedOf, inheritLabel = 'Same as the admin', forCode = false, disabled }) {
+export function LedgerPages({ books, selected, onSelect, own, onOwn, inheritedOf, allowedOf, inheritLabel = 'Same as the admin', forCode = false, disabled, extra = null }) {
   const flip = (id, on) => onSelect(on ? [...selected, id] : selected.filter(x => x !== id));
   return (
     <div className="grid items-start gap-3 grid-cols-[repeat(auto-fill,minmax(min(100%,22rem),1fr))]">
@@ -55,6 +55,7 @@ export function LedgerPages({ books, selected, onSelect, own, onOwn, inheritedOf
                 {mine
                   ? <ResourcePicker forCode={forCode} legend="Pages" value={own[b.id]} onChange={v => onOwn(b.id, v)} disabled={disabled} allowed={allowedOf ? allowedOf(b.id) : inheritedOf(b.id)} />
                   : <p className="text-xs text-muted-foreground">{inheritLabel}: {pagesText(inheritedOf(b.id))}</p>}
+                {extra && extra(b.id, mine ? own[b.id] : inheritedOf(b.id))}
               </>
             )}
           </div>

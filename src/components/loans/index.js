@@ -16,9 +16,9 @@ function RegisterList() {
   const canCreate = !account?.accessCode;
   const [creating, setCreating] = useState(false);
   const [showSettled, setShowSettled] = useState(false);
-  const settledCount = (registers || []).filter(r => r.settled && (!r.bookId || r.bookId === book?.id)).length;
+  const settledCount = (registers || []).filter(r => r.settled && (!r.bookId || r.bookId === book?.id || r.ledgerIds?.includes(book?.id))).length;
   // The open ledger's loans plus loans not linked to any ledger.
-  const mine = (registers || []).filter(r => !r.bookId || r.bookId === book?.id);
+  const mine = (registers || []).filter(r => !r.bookId || r.bookId === book?.id || r.ledgerIds?.includes(book?.id));
   const visible = mine.filter(r => showSettled || !r.settled);
   return (
     <section className="space-y-4" aria-label="Loans">

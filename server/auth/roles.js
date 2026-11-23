@@ -29,4 +29,15 @@ const canAccessLoan = (account, registerId, minRole) => {
 // null means every register (super admin).
 const visibleLoanIds = account => (account.isSuperAdmin ? null : (account.loanMemberships || []).map(m => m.registerId));
 
-module.exports = { RANK, roleFor, canAccess, visibleBookIds, loanRoleFor, canAccessLoan, visibleLoanIds };
+// Which notebooks of a ledger this account may open: { only?: [ids], exclude?: [ids] } or null for every notebook it may see.
+// An admin's membership carries notebooksExcluded; a code session carries the combined rule in `notebooks`.
+const notebookRuleOf = (account, bookId) => {
+  if (account.isSuperAdmin) return null;
+  const m = (account.memberships || []).find(x => x.bookId === bookId);
+  if (!m) return null;
+  if (m.notebooks) return m.notebooks;
+  return Array.isArray(m.notebooksExcluded) && m.notebooksExcluded.length ? { exclude: m.notebooksExcluded } : null;
+};
+const notebookAllowed = (rule, notebookId) => !rule || ((!rule.only || rule.only.includes(notebookId)) && !(rule.exclude || []).includes(notebookId));
+
+module.exports = { notebookRuleOf, notebookAllowed, RANK, roleFor, canAccess, visibleBookIds, loanRoleFor, canAccessLoan, visibleLoanIds };

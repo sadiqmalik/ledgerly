@@ -136,6 +136,7 @@ ledger/
 │   ├── 0021_diary_private.sql owner column for diary categories
 │   ├── 0022_timestamps.sql created_at / updated_at columns and triggers on the older tables
 │   └── 0023_diary_notebooks.sql notebooks, linked to a ledger or none
+│       (later migrations 0024 to 0030 are listed in the tree above)
 ├── worker/
 │   ├── index.js             entry: fetch() and scheduled()
 │   ├── api.js               Hono app, middleware, error format
@@ -410,6 +411,8 @@ Migration `0013_loan_registers.sql` adds `loan_registers` (`id`, `name`, `borrow
 Migration `0015_entry_documents.sql` adds `entry_documents` (`entry_id`, `document_id`, `book_id`, `created_at`; primary key `entry_id` and `document_id`, indexes on `document_id` and `book_id`). It is a plain many-to-many link between entries and documents of the same book. Links do not change any amount. A link to a soft-deleted entry stays in the table but is never read, and deleting a document deletes its links in the same request.
 
 Migration `0014_currencies.sql` adds `currencies` (`code`, 3 upper-case letters, primary key; `name`; `alias`, optional, trimmed, up to 8 characters, empty means none; `active`, `1` or `0`; `created_at`, `updated_at`). It is one list for the whole app, not one per book. The migration seeds the standard list and every other code already in use in books, funds, accounts, loan registers and entries (name = the code). Other tables keep storing the 3-letter code, with no foreign key. The list is read with `GET /api/currencies` and changed by super-administrator routes (6.7).
+
+**Sharing with several ledgers** (migration `0030_shared_ledgers.sql`): `diary_notebook_ledgers`, `loan_register_ledgers` and `item_ledgers` hold the extra ledgers of a notebook, loan register or item. Each record keeps one main ledger (`book_id`); the link tables list the others (`extraLedgerIds` on write, `ledgerIds` in the JSON). Reading works through any ledger where the caller has the role and the page. Only the main ledger can write: notebooks need Editor or Admin there (Admin to delete, move or change the share list), items answer 409 for a change or delete outside the main ledger, and a loan linked to a ledger needs Editor or Admin in its main ledger with the Loans page (the JSON `role` is capped to viewer elsewhere, `canWrite` tells the screen). Moving the main ledger (items: `moveToLedgerId`, location cleared) needs Admin in the ledger left and the ledger joined; the new main is dropped from the list. Access-code sessions get no sharing details; the data names only ledgers the code can open. Loans carry `createdByName`. Other access-code columns: `account_id` (owner, `0027`), `code_secret` (`0028`, shown only to a super administrator), `notebook_rules` (`0029`) and `book_resources` (`0025`). `accounts.username` (`0026`) is unique and lower case; the email is optional and sign-in takes either.
 
 There are also `access_codes`, `access_code_loans` (migration `0018`: which loan registers each code may view), `items` and `item_locations` (migration `0007`) and `account_log` (the super administrator audit trail: actor, action, target, detail, time). The diagram leaves out the less important columns (`rate`, `comment`, `paid_date`, `created_at`, `updated_at` and others).
 

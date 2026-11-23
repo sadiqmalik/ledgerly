@@ -153,6 +153,152 @@ describe('notebooks API', () => {
     assert.equal((await ctx.d1.prepare('SELECT COUNT(*) AS n FROM diary_notes').first()).n, 0);
   });
 
+  describe('shared with more ledgers', () => {
+    const mk = async (email, memberships, extra = {}) => {
+      await createAccountStore(ctx.repo.authStore).create({ email, name: email.split('@')[0], password: PW, memberships, resources: ['diary'], ...extra });
+      return withCookie(ctx.app, `lsid=${(await ctx.auth.login(email, PW)).sid}`);
+    };
+    const share = async (name = 'Family', extraLedgerIds = ['personal']) => (await owner.post(NB).send({ name, bookId: BOOK, extraLedgerIds })).body;
+    const links = async () => (await ctx.d1.prepare('SELECT notebook_id, book_id FROM diary_notebook_ledgers').all()).results;
+
+    it('moving: super admin, or Admin in both the current and the target ledger (with the page); extras follow; old members lose access', async () => {
+      const mine = (await editor.post(NB).send({ name: 'Mine', bookId: BOOK })).body;
+      assert.equal(mine.canRelink, false); // the creator, as an Editor, cannot move it
+      const e = (await entry(mine.id, {}, editor)).body;
+      assert.equal((await editor.put(`${NB}/${mine.id}`).send({ bookId: 'personal' })).status, 403);
+      const adminSrc = await mk('src@example.com', [{ bookId: BOOK, role: 'admin' }, { bookId: 'personal', role: 'editor' }]);
+      assert.equal((await adminSrc.put(`${NB}/${mine.id}`).send({ bookId: 'personal' })).status, 403); // Admin only in the source
+      assert.equal((await adminSrc.put(`${NB}/${mine.id}`).send({ bookId: null })).status, 403);
+      const adminDst = await mk('dst@example.com', [{ bookId: BOOK, role: 'editor' }, { bookId: 'personal', role: 'admin' }]);
+      assert.equal((await adminDst.put(`${NB}/${mine.id}`).send({ bookId: 'personal' })).status, 403); // Admin only in the target
+      const nopage = await mk('nopg@example.com', [{ bookId: BOOK, role: 'admin' }, { bookId: 'personal', role: 'admin', resources: ['ledger'] }]);
+      assert.equal((await nopage.put(`${NB}/${mine.id}`).send({ bookId: 'personal' })).status, 404); // no Notebook page in the target
+      const both = await mk('both2@example.com', [{ bookId: BOOK, role: 'admin' }, { bookId: 'personal', role: 'admin' }]);
+      const bm = (await both.post(NB).send({ name: 'B', bookId: BOOK, extraLedgerIds: ['personal'] })).body;
+      assert.equal(bm.canRelink, true);
+      const moved = (await both.put(`${NB}/${bm.id}`).send({ bookId: 'personal' })).body;
+      assert.deepEqual([moved.bookId, moved.ledgerIds], ['personal', ['personal']]);
+      assert.equal((await entry(bm.id, {}, both)).status, 201);
+      assert.equal((await editor.get(`${NB}/${bm.id}/entries`)).status, 404); // old ledger members lose access
+      const keep = (await both.post(NB).send({ name: 'K', bookId: BOOK })).body;
+      assert.deepEqual((await both.put(`${NB}/${keep.id}`).send({ bookId: 'personal', extraLedgerIds: [BOOK] })).body.ledgerIds, ['personal', BOOK]);
+      assert.equal((await both.put(`${NB}/${mine.id}`).send({ bookId: 'personal' })).body.bookId, 'personal');
+      assert.equal((await owner.put(`${NB}/${mine.id}`).send({ bookId: BOOK })).body.bookId, BOOK); // super admin always
+      assert.equal((await owner.get(`${NB}/${mine.id}/entries`)).body[0].id, e.id);
+    });
+
+    it('default is unchanged: one ledger, no links', async () => {
+      const a = await linked();
+      assert.deepEqual([a.ledgerIds, a.ledgerNames], [[BOOK], ['Family']]);
+      assert.deepEqual(await links(), []);
+      assert.deepEqual((await outsider.get(NB)).body, []);
+    });
+
+    it('opens through an extra ledger only with a role, the page, and an active ledger; reading is highest-wins, writing needs the main ledger', async () => {
+      const a = await share();
+      assert.deepEqual([a.ledgerIds, a.ledgerNames, a.bookId], [[BOOK, 'personal'], ['Family', 'Personal'], BOOK]);
+      // outsider is Admin in the extra ledger and has the page there.
+      const list = (await outsider.get(NB)).body;
+      assert.deepEqual(list.map(n => [n.name, n.canEdit, n.canDelete, n.canRelink]), [['Family', false, false, false]]);
+      assert.equal(list[0].mainLedgerId, BOOK);
+      // Admin only in a shared-in ledger: view only, every write answers 403.
+      const denied = await entry(a.id, {}, outsider);
+      assert.equal(denied.status, 403);
+      assert.match(denied.body.error || denied.body.message || '', /view only/);
+      assert.equal((await outsider.put(`${NB}/${a.id}`).send({ name: 'X' })).status, 403);
+      assert.equal((await outsider.put(`${NB}/${a.id}`).send({ extraLedgerIds: [] })).status, 403);
+      assert.equal((await outsider.delete(`${NB}/${a.id}`)).status, 403);
+      assert.equal((await outsider.get(`${NB}/${a.id}/entries`)).status, 200);
+      assert.equal((await outsider.get(`${NB}/${a.id}/names`)).status, 200);
+      // Viewer in the main ledger, Editor in the extra one: reads, cannot write.
+      const both = await mk('both@example.com', [{ bookId: BOOK, role: 'viewer' }, { bookId: 'personal', role: 'editor' }]);
+      assert.deepEqual((await both.get(NB)).body.map(n => [n.canEdit, n.canDelete]), [[false, false]]);
+      assert.equal((await entry(a.id, {}, both)).status, 403);
+      assert.equal((await both.get(`${NB}/${a.id}/entries`)).status, 200);
+      // Editor in the main ledger, Viewer in the extra one: still edits.
+      const mainEd = await mk('mained@example.com', [{ bookId: BOOK, role: 'editor' }, { bookId: 'personal', role: 'viewer' }]);
+      assert.deepEqual((await mainEd.get(NB)).body.map(n => n.canEdit), [true]);
+      assert.equal((await entry(a.id, {}, mainEd)).status, 201);
+      // Editor only in the extra ledger (no role in the main one): reads, cannot write.
+      const extraEd = await mk('extraed@example.com', [{ bookId: 'personal', role: 'editor' }]);
+      assert.deepEqual((await extraEd.get(NB)).body.map(n => n.canEdit), [false]);
+      assert.equal((await entry(a.id, {}, extraEd)).status, 403);
+      // No page in the extra ledger: not through it, still through the main one.
+      const nopage = await mk('nopage@example.com', [{ bookId: BOOK, role: 'viewer', resources: ['diary'] }, { bookId: 'personal', role: 'admin', resources: ['ledger'] }]);
+      assert.deepEqual((await nopage.get(NB)).body.map(n => n.canEdit), [false]);
+      const onlyExtra = await mk('onlyextra@example.com', [{ bookId: 'personal', role: 'admin', resources: ['ledger'] }, { bookId: BOOK, role: 'viewer', resources: ['ledger'] }], { resources: ['diary'] });
+      assert.deepEqual((await onlyExtra.get(NB)).body, []);
+      assert.equal((await onlyExtra.get(`${NB}/${a.id}/entries`)).status, 404);
+      // Deactivated extra ledger: the main one still works, and an extra-only person is held back.
+      await ctx.d1.prepare("UPDATE books SET active = 0 WHERE id = 'personal'").run();
+      assert.equal((await outsider.get(`${NB}/${a.id}/entries`)).status, 423);
+      assert.equal((await viewer.get(`${NB}/${a.id}/entries`)).status, 200);
+    });
+
+    it('the notebook rule applies per ledger', async () => {
+      const a = await share();
+      const b = await share('Car');
+      const p = await mk('rules@example.com', [{ bookId: BOOK, role: 'editor', notebooksExcluded: [a.id] }, { bookId: 'personal', role: 'viewer' }]);
+      // Excluded in the main ledger, but open through the extra one as a viewer.
+      assert.deepEqual((await p.get(NB)).body.map(n => [n.name, n.canEdit]), [['Car', true], ['Family', false]]);
+      const q = await mk('rules2@example.com', [{ bookId: BOOK, role: 'editor', notebooksExcluded: [a.id] }, { bookId: 'personal', role: 'viewer', notebooksExcluded: [a.id] }]);
+      assert.deepEqual((await q.get(NB)).body.map(n => n.name), ['Car']);
+      assert.equal((await q.get(`${NB}/${a.id}/entries`)).status, 404);
+      assert.ok(b.id);
+    });
+
+    it('add and remove extras, with who may', async () => {
+      const a = await linked();
+      assert.deepEqual((await owner.put(`${NB}/${a.id}`).send({ extraLedgerIds: ['personal'] })).body.ledgerIds, [BOOK, 'personal']);
+      assert.deepEqual((await owner.put(`${NB}/${a.id}`).send({ name: 'Renamed' })).body.ledgerIds, [BOOK, 'personal']); // kept
+      assert.equal((await owner.put(`${NB}/${a.id}`).send({ extraLedgerIds: [BOOK] })).status, 400);
+      assert.equal((await owner.put(`${NB}/${a.id}`).send({ extraLedgerIds: ['nope'] })).status, 404);
+      // An Editor of the main ledger who is not the owner may not change the sharing.
+      assert.equal((await editor.put(`${NB}/${a.id}`).send({ extraLedgerIds: [] })).status, 403);
+      assert.equal((await editor.put(`${NB}/${a.id}`).send({ name: 'Edited' })).status, 200);
+      // The owner Editor needs the Editor role in each added ledger.
+      const mine = (await editor.post(NB).send({ name: 'Mine', bookId: BOOK })).body;
+      assert.equal((await editor.put(`${NB}/${mine.id}`).send({ extraLedgerIds: ['personal'] })).status, 404); // no role there
+      assert.equal((await editor.post(NB).send({ name: 'x', bookId: BOOK, extraLedgerIds: ['personal'] })).status, 404);
+      // The main ledger's Admin may.
+      const admin = await mk('admin@example.com', [{ bookId: BOOK, role: 'admin' }, { bookId: 'personal', role: 'editor' }]);
+      assert.deepEqual((await admin.put(`${NB}/${a.id}`).send({ extraLedgerIds: [] })).body.ledgerIds, [BOOK]);
+      assert.deepEqual(await links(), []);
+      // Private notebooks cannot be shared; relinking drops the new main from the extras and unlinking drops all.
+      assert.equal((await owner.post(NB).send({ name: 'P', extraLedgerIds: ['personal'] })).status, 400);
+      await owner.put(`${NB}/${a.id}`).send({ extraLedgerIds: ['personal'] });
+      assert.deepEqual((await owner.put(`${NB}/${a.id}`).send({ bookId: 'personal' })).body.ledgerIds, ['personal']);
+      await owner.put(`${NB}/${a.id}`).send({ extraLedgerIds: [BOOK] });
+      assert.deepEqual((await owner.put(`${NB}/${a.id}`).send({ bookId: null })).body.ledgerIds, []);
+      assert.deepEqual(await links(), []);
+      assert.equal((await owner.post(NB).send({ name: 'Many', bookId: BOOK, extraLedgerIds: Array.from({ length: 51 }, (_, i) => `l${i}`) })).status, 400);
+    });
+
+    it('ledger-notebooks lists notebooks shared into the ledger; deleting cleans links', async () => {
+      const a = await share(); await linked('Other');
+      assert.deepEqual((await owner.get('/api/diary/ledger-notebooks?bookId=personal')).body.map(n => n.name), ['Family']);
+      assert.deepEqual((await outsider.get('/api/diary/ledger-notebooks?bookId=personal')).body.map(n => n.name), ['Family']);
+      assert.equal((await outsider.delete(`${NB}/${a.id}`)).status, 403); // Admin only through the extra ledger: view only
+      assert.equal((await owner.delete(`${NB}/${a.id}`)).status, 200);
+      assert.deepEqual(await links(), []);
+      const b = await share('Again');
+      await ctx.repo.books.remove('personal');
+      assert.deepEqual(await links(), []);
+      assert.ok(b.id);
+    });
+
+    it('access codes read through an extra ledger, never write', async () => {
+      const a = await share();
+      const made = await owner.post('/api/admin/access-codes').send({ name: 'Board', bookIds: ['personal'], resources: ['diary'] });
+      const res = await request(ctx.app).post('/api/auth/access-code').set('cf-connecting-ip', '10.7.7.8').send({ code: made.body.accessCode.code });
+      const code = withCookie(ctx.app, res.headers['set-cookie'][0].split(';')[0]);
+      assert.deepEqual((await code.get(NB)).body.map(n => [n.name, n.canEdit]), [['Family', false]]);
+      assert.equal((await code.get(`${NB}/${a.id}/entries`)).status, 200);
+      assert.equal((await code.post(`${NB}/${a.id}/entries`).send({ date: '2026-02-01', title: 'z' })).status, 403);
+      assert.equal((await code.put(`${NB}/${a.id}`).send({ extraLedgerIds: [] })).status, 403);
+    });
+  });
+
   describe('access codes', () => {
     const codeApi = async (resources, bookIds = [BOOK]) => {
       const made = await owner.post('/api/admin/access-codes').send({ name: 'Board', bookIds, ...(resources ? { resources } : {}) });
@@ -187,6 +333,24 @@ describe('notebooks API', () => {
       ];
       for (const [method, url, body] of writes) assert.equal((await code[method](url).send(body)).status, 403, `${method} ${url}`);
       assert.equal((await owner.get(`${NB}/${fam.id}/entries`)).body.length, 1);
+    });
+
+    it('names only ledgers the code can open, and still lets it read shared notebooks', async () => {
+      await ctx.d1.prepare("INSERT INTO books (id, name, created_at) VALUES ('vault', 'Vault', ?)").bind(new Date().toISOString()).run();
+      const both = (await owner.post(NB).send({ name: 'Main A', bookId: BOOK, extraLedgerIds: ['personal'] })).body; // main A shared into B
+      const hidden = (await owner.post(NB).send({ name: 'Main C', bookId: 'vault', extraLedgerIds: [BOOK] })).body; // main C (not openable) shared into A
+      await owner.post(`${NB}/${hidden.id}/entries`).send({ date: '2026-02-01', title: 'Note in C' }).expect(201);
+      assert.deepEqual((await owner.get(NB)).body.find(n => n.id === hidden.id).ledgerNames, ['Vault', 'Family']);
+      const code = await codeApi(['diary'], [BOOK, 'personal']);
+      const list = (await code.get(NB)).body;
+      const a = list.find(n => n.id === both.id); const c = list.find(n => n.id === hidden.id);
+      assert.deepEqual(a.ledgerIds, [BOOK, 'personal']); assert.equal(a.bookId, BOOK);
+      assert.deepEqual(c.ledgerIds, [BOOK]); assert.deepEqual(c.ledgerNames, ['Family']);
+      assert.equal(c.bookId, BOOK); assert.equal(c.bookName, 'Family');
+      assert.ok(!JSON.stringify(list).toLowerCase().includes('vault'));
+      const entries = await code.get(`${NB}/${hidden.id}/entries`);
+      assert.equal(entries.status, 200); assert.equal(entries.body.length, 1);
+      assert.ok(!JSON.stringify(entries.body).toLowerCase().includes('vault'));
     });
 
     it('is refused without the Notebook page', async () => {

@@ -142,4 +142,23 @@ describe('loans shared with access codes', () => {
     await ctx.api.delete(`/api/admin/access-codes/${fourth.id}`).expect(200);
     assert.equal(await links('code_id', fourth.id), 0);
   });
+  it('names only ledgers the code can open', async () => {
+    await ctx.d1.prepare("INSERT INTO books (id, name, created_at) VALUES ('vault', 'Vault', ?)").bind(new Date().toISOString()).run();
+    const a = (await ctx.api.post('/api/loans').send({ name: 'Main A', borrower: 'Ali', lender: 'Bilal', bookId: BOOK, extraLedgerIds: ['personal'] }).expect(201)).body;
+    const c = (await ctx.api.post('/api/loans').send({ name: 'Main C', borrower: 'Ali', lender: 'Bilal', bookId: 'vault', extraLedgerIds: [BOOK] }).expect(201)).body;
+    const made = (await ctx.api.post('/api/admin/access-codes').send({ name: 'Two', bookIds: [BOOK, 'personal'], resources: ['dashboard', 'loans'] }).expect(201)).body.accessCode;
+    await share(a.id, [made.id]).expect(200);
+    await share(c.id, [made.id]).expect(200);
+    assert.deepEqual((await ctx.api.get('/api/loans').expect(200)).body.find(r => r.id === c.id).ledgerNames, ['Vault', 'Family']);
+    const api = await signIn(made.code);
+    const list = (await api.get('/api/loans').expect(200)).body;
+    const la = list.find(r => r.id === a.id); const lc = list.find(r => r.id === c.id);
+    assert.deepEqual(la.ledgerIds, [BOOK, 'personal']); assert.equal(la.bookId, BOOK);
+    assert.deepEqual(lc.ledgerIds, [BOOK]); assert.deepEqual(lc.ledgerNames, ['Family']); assert.equal(lc.bookId, BOOK);
+    assert.ok(!JSON.stringify(list).toLowerCase().includes('vault'));
+    for (const r of [a, c]) {
+      const entries = await api.get(`/api/loans/${r.id}/entries`).expect(200);
+      assert.ok(!JSON.stringify(entries.body).toLowerCase().includes('vault'));
+    }
+  });
 });

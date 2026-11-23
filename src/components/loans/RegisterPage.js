@@ -1,4 +1,7 @@
+import SharedBadge from '../common/SharedBadge';
+import { StampFooter } from '../common/Stamp';
 import React, { useCallback, useEffect, useState } from 'react';
+import { useAuth } from '../../auth/AuthContext';
 import { api } from '../../services/dataAPI';
 import Amount from '../common/Amount';
 import ConfirmDialog from '../common/ConfirmDialog';
@@ -19,6 +22,7 @@ function KindBadge({ kind }) {
 }
 
 export default function RegisterPage({ registerId }) {
+  const { account } = useAuth();
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [kind, setKind] = useState('all');
@@ -161,7 +165,7 @@ export default function RegisterPage({ registerId }) {
         <header className="rounded-xl border border-border bg-card p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
-              <h2 className="flex flex-wrap items-center gap-2 text-lg font-semibold"><span className="min-w-0 break-words">{reg.name}</span><RoleBadge role={reg.role} />{settled && <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">Settled</span>}</h2>
+              <h2 className="flex flex-wrap items-center gap-2 text-lg font-semibold"><span className="min-w-0 break-words">{reg.name}</span><RoleBadge role={reg.role} /><SharedBadge kind="loan" ledgerNames={reg.ledgerNames} all={!reg.bookId} />{settled && <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">Settled</span>}{(account?.accessCode ? [] : (reg.ledgerNames || [])).map(n => <span key={n} className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-foreground">{n}</span>)}</h2>
               <p className="text-sm text-muted-foreground">{reg.lender} &rarr; {reg.borrower}</p>
               {reg.description && <p className="mt-2 max-w-prose text-sm">{reg.description}</p>}
             </div>
@@ -173,14 +177,19 @@ export default function RegisterPage({ registerId }) {
                       onClick={() => { setActionError(''); setConfirm({ type: 'settle' }); }}>Mark as settled</button>}
                 <button type="button" className={btnSecondary} onClick={() => setEditReg(true)}>Edit loan</button>
                 <button type="button" className={btnSecondary} onClick={() => setDupReg(true)}>Duplicate loan</button>
-                <button type="button" className={btnDanger} disabled={hasEntries} aria-describedby={hasEntries ? 'loan-del-hint' : undefined}
+                <button type="button" className={btnDanger} disabled={hasEntries} aria-describedby={hasEntries ? 'loan-settle-hint' : undefined}
                   onClick={() => { setActionError(''); setConfirm({ type: 'register' }); }}>Delete loan</button>
               </div>
             )}
           </div>
-          {admin && !settled && (!hasEntries || tot.balance !== 0) && <p id="loan-settle-hint" className="mt-2 text-xs text-muted-foreground">A loan can be marked as settled once it has entries and the remaining balance is zero.</p>}
           {settled && <p className="mt-2 text-xs text-muted-foreground">This loan is settled. Entries are read only until it is reopened.</p>}
-          {admin && hasEntries && <p id="loan-del-hint" className="mt-2 text-xs text-muted-foreground">A loan with entries cannot be deleted. Delete its entries first.</p>}
+          {admin && ((!settled && (!hasEntries || tot.balance !== 0)) || hasEntries) && (
+            <p id="loan-settle-hint" className="mt-2 flex items-start gap-1.5 text-xs text-muted-foreground">
+              <svg aria-hidden="true" viewBox="0 0 24 24" className="mt-px size-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" /></svg>
+              <span>A loan can be settled once it has entries and the balance is zero; a loan with entries can only be deleted after its entries are deleted.</span>
+            </p>
+          )}
+          <StampFooter createdAt={reg.createdAt} updatedAt={reg.updatedAt} by={reg.createdByName} />
         </header>
 
           <div className="space-y-2 rounded-xl border border-border bg-card p-3">

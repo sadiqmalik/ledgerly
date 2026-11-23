@@ -1,3 +1,4 @@
+import { StampFooter } from '../common/Stamp';
 import React, { useEffect, useState } from 'react';
 import { api } from '../../services/dataAPI';
 import ConfirmDialog from '../common/ConfirmDialog';
@@ -45,7 +46,6 @@ export default function CategoryPage({ base, nbId, category, canEdit, n, reload,
           <div className="min-w-0">
             <h2 className="break-words text-xl font-semibold text-foreground">{category.name}</h2>
             {category.description && <p className="mt-2 max-w-prose whitespace-pre-wrap break-words text-sm">{category.description}</p>}
-            <p className="mt-1 text-xs text-muted-foreground">{stampText(category.createdAt, category.updatedAt)}</p>
           </div>
           {canEdit && (
             <div className="flex flex-wrap gap-2">
@@ -56,6 +56,7 @@ export default function CategoryPage({ base, nbId, category, canEdit, n, reload,
             </div>
           )}
         </div>
+        <StampFooter createdAt={category.createdAt} updatedAt={category.updatedAt} />
       </header>
 
       <div className="flex flex-wrap items-center gap-3">

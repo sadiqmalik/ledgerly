@@ -9,6 +9,7 @@ import { useCurrencies } from '../../hooks/CurrencyContext';
 import { notifyLoansChanged, useLoanNames } from './useLoanRegisters';
 import { canAdmin } from './shared';
 import Select from '../common/Select';
+import MultiSelect from '../common/MultiSelect';
 import RecordView from '../common/RecordView';
 import { useBooks } from '../../hooks/BooksContext';
 
@@ -25,7 +26,8 @@ export default function RegisterDialog({ register, copyOf, onClose, onSaved, rea
     name: register ? register.name : copyOf ? `${copyOf.name} (copy)` : '', borrower: src?.borrower || '', lender: src?.lender || '',
     description: src?.description || '', currency: src?.currency || active[0]?.code || 'USD',
     // A new loan starts linked to the ledger that is open; a loan with no ledger shows under every ledger.
-    bookId: register ? (register.bookId || '') : (copyOf ? (copyOf.bookId || '') : (openBook?.id || ''))
+    bookId: register ? (register.bookId || '') : (copyOf ? (copyOf.bookId || '') : (openBook?.id || '')),
+    extra: (register || copyOf)?.ledgerIds?.filter(id => id !== (register || copyOf).bookId) || []
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -50,7 +52,7 @@ export default function RegisterDialog({ register, copyOf, onClose, onSaved, rea
 
   const submit = async e => {
     e.preventDefault();
-    const body = { name: f.name.trim(), borrower: f.borrower.trim(), lender: f.lender.trim(), description: f.description.trim() || null, bookId: f.bookId || null };
+    const body = { name: f.name.trim(), borrower: f.borrower.trim(), lender: f.lender.trim(), description: f.description.trim() || null, bookId: f.bookId || null, extraLedgerIds: f.bookId ? f.extra.filter(id => id !== f.bookId) : [] };
     if (!body.name || !body.borrower || !body.lender) { setError('Enter a name, a borrower and a lender.'); return; }
     if (body.borrower.length > 120 || body.lender.length > 120) { setError('Too many names: borrower and lender can each be up to 120 characters in total.'); return; }
     const currency = f.currency.trim().toUpperCase();
@@ -77,7 +79,7 @@ export default function RegisterDialog({ register, copyOf, onClose, onSaved, rea
           { label: 'Lender', value: register.lender },
           { label: 'Borrower', value: register.borrower },
           { label: 'Currency', value: register.currency },
-          { label: 'Ledger', value: books.find(b => b.id === register.bookId)?.name },
+          { label: 'Ledger', value: (register.ledgerNames || []).join(', ') || books.find(b => b.id === register.bookId)?.name },
           { label: 'Description', value: register.description, wide: true }
         ]} />
     );
@@ -91,12 +93,19 @@ export default function RegisterDialog({ register, copyOf, onClose, onSaved, rea
         <Field label="Borrower (who took the loan)"><NamesInput value={f.borrower} onChange={v => setF(s => ({ ...s, borrower: v }))} items={names} inputClassName={inputCls} placeholder="Pick or type a name" /></Field>
         <Field label="Lender (who gave it)"><NamesInput value={f.lender} onChange={v => setF(s => ({ ...s, lender: v }))} items={names} inputClassName={inputCls} placeholder="Pick or type a name" /></Field>
         <Field label="Description"><textarea rows={3} className={inputCls} value={f.description} onChange={set('description')} maxLength={500} /></Field>
-        <Field label="Ledger">
-          <Select className={inputCls} value={f.bookId} onChange={e => setF(s => ({ ...s, bookId: e.target.value }))} aria-label="Ledger">
+        <Field label="Main ledger">
+          <Select className={inputCls} value={f.bookId} onChange={e => setF(s => ({ ...s, bookId: e.target.value }))} aria-label="Main ledger">
             <option value="">No ledger (shown under every ledger)</option>
             {books.filter(b => b.active !== false).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
           </Select>
         </Field>
+        <p className="-mt-1 text-xs text-muted-foreground">Change it to move this loan to another ledger. It then shows in the new ledger (and in the ones chosen below).</p>
+        {f.bookId && (
+          <Field label="Also show in">
+            <MultiSelect label="Also show in" allLabel="No other ledger" options={books.filter(b => b.active !== false && b.id !== f.bookId).map(b => ({ value: b.id, label: b.name }))}
+              value={f.extra.filter(id => id !== f.bookId)} onChange={extra => setF(s => ({ ...s, extra }))} />
+          </Field>
+        )}
         <Field label="Currency">
           <CurrencySelect className={inputCls} value={f.currency} onChange={currency => setF(s => ({ ...s, currency }))} disabled={locked} aria-label="Currency" />
         </Field>

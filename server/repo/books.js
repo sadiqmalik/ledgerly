@@ -52,6 +52,11 @@ const createBooksRepo = (db, authStore) => {
     async remove(id) {
       const accounts = (await authStore.accounts.list()).filter(a => a.memberships.some(m => m.bookId === id));
       await db.batch([
+        // Shares: links held by this ledger's own notebooks and items go with them; links to this ledger from other
+        // notebooks, loans and items are dropped (those keep their own main ledger, so nothing else is deleted).
+        run('DELETE FROM diary_notebook_ledgers WHERE notebook_id IN (SELECT id FROM diary_notebooks WHERE book_id = ?) OR book_id = ?', id, id),
+        run('DELETE FROM item_ledgers WHERE item_id IN (SELECT id FROM items WHERE book_id = ?) OR book_id = ?', id, id),
+        run('DELETE FROM loan_register_ledgers WHERE book_id = ?', id),
         ...BOOK_TABLES.map(t => run(`DELETE FROM ${t} WHERE book_id = ?`, id)),
         run('UPDATE loan_registers SET book_id = NULL WHERE book_id = ?', id), // loans survive a deleted ledger, unlinked
         run('DELETE FROM books WHERE id = ?', id),

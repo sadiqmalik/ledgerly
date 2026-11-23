@@ -240,16 +240,16 @@ function LoanChildren({ route, onNavigate, bookId }) {
   const { registers } = useLoanRegisters();
   if (!registers) return <p className="py-1 pl-10 text-xs text-muted-foreground">Loading...</p>;
   // Only the open ledger's loans (and loans not linked to any ledger); a settled loan only while it is open.
-  const shown = registers.filter(r => (!r.bookId || r.bookId === bookId || route === `/loans/${r.id}`) && (!r.settled || route === `/loans/${r.id}`));
+  const shown = registers.filter(r => (!r.bookId || r.ledgerIds?.includes(bookId) || route === `/loans/${r.id}`) && (!r.settled || route === `/loans/${r.id}`));
   return (
     <ul className="nav-tree max-h-[60vh] overflow-y-auto">
       {shown.map(r => {
         const active = route === `/loans/${r.id}`;
         return (
           <li key={r.id}>
-            <a href={`#/loans/${r.id}`} aria-current={active ? 'page' : undefined} title={r.name} onClick={() => onNavigate && onNavigate()}
+            <a href={`#/loans/${r.id}`} aria-current={active ? 'page' : undefined} title={!r.bookId ? `${r.name} (shown in every ledger)` : r.ledgerIds?.length > 1 ? `${r.name} (shared: ${(r.ledgerNames || []).join(', ')})` : r.name} onClick={() => onNavigate && onNavigate()}
               className={`block truncate py-1 text-sm no-underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${active ? 'font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
-              {r.name}
+              {r.name}{(!r.bookId || r.ledgerIds?.length > 1) && <span aria-hidden="true" className="ml-1 text-accent">&#8734;</span>}
             </a>
           </li>
         );

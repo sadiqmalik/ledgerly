@@ -2,7 +2,8 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { api } from '../../services/dataAPI';
 import useHashRoute from '../../hooks/useHashRoute';
 import usePageName from '../../utils/pageNames';
-import Stamp from '../common/Stamp';
+import { StampFooter } from '../common/Stamp';
+import SharedBadge from '../common/SharedBadge';
 import { errorMessage } from '../common/format';
 import { btnPrimary } from '../settings/ui';
 import { useBooks } from '../../hooks/BooksContext';
@@ -27,8 +28,8 @@ export default function Notebooks() {
   const [n, setN] = useState(0);
   const reload = useCallback(() => setN(x => x + 1), []);
   const { book } = useBooks();
-  // The open ledger's notebooks plus private ones (linked to no ledger); a notebook of another ledger is not listed here.
-  const mine = (list || []).filter(nb => !nb.bookId || nb.bookId === book?.id);
+  // The open ledger's notebooks plus private ones (linked to no ledger); a notebook not shared with this ledger is not listed here.
+  const mine = (list || []).filter(nb => !nb.bookId || nb.bookId === book?.id || (nb.ledgerIds || []).includes(book?.id));
 
   useEffect(() => {
     let off = false;
@@ -65,18 +66,18 @@ export default function Notebooks() {
           {mine.map(nb => (
             <a key={nb.id} href={`#/diary/${nb.id}`} className="flex h-full flex-col rounded-xl border border-border bg-card p-4 no-underline text-foreground hover:bg-muted/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
               <div className="flex items-start justify-between gap-2">
-                <h2 className="min-w-0 truncate text-lg font-semibold">{nb.name}</h2>
+                <h2 className="flex min-w-0 items-center gap-1.5 text-lg font-semibold"><span className="min-w-0 truncate">{nb.name}</span><SharedBadge kind="notebook" ledgerNames={nb.ledgerNames} /></h2>
                 {!nb.canEdit && <span className={`${pill} shrink-0`}>view only</span>}
               </div>
               {nb.description && <p className="mt-1 line-clamp-3 whitespace-pre-wrap break-words text-sm text-muted-foreground">{nb.description}</p>}
-              <p className="mt-2 text-xs text-muted-foreground">{nb.bookName ? `Ledger: ${nb.bookName}` : 'Private, not linked to a ledger'}</p>
+              {!nb.bookName && <p className="mt-2"><span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-accent/60 bg-accent/10 px-1.5 py-px text-[11px] font-semibold leading-4 text-accent" title="Not linked to a ledger: only you can see it">&#128274; Private</span></p>}
               <p className="text-xs text-muted-foreground">{nb.categoryCount} {nb.categoryCount === 1 ? 'category' : 'categories'} · {nb.dateCount} {nb.dateCount === 1 ? 'date' : 'dates'} · {nb.noteCount} {nb.noteCount === 1 ? 'note' : 'notes'}</p>
-              <Stamp createdAt={nb.createdAt} updatedAt={nb.updatedAt} className="mt-auto pt-2 text-xs text-muted-foreground" />
+              <StampFooter createdAt={nb.createdAt} updatedAt={nb.updatedAt} />
             </a>
           ))}
         </div>
       )}
-      {creating && <NotebookForm onClose={() => setCreating(false)} onSaved={nb => { setCreating(false); reload(); if (nb?.id) window.location.hash = `#/diary/${nb.id}`; }} />}
+      {creating && <NotebookForm onClose={() => setCreating(false)} onSaved={nb => { setCreating(false); setList(null); reload(); if (nb?.id) window.location.hash = `#/diary/${nb.id}`; }} />}
     </section>
   );
 }

@@ -48,7 +48,7 @@ The app keeps **one continuous ledger per book**. Every entry has a date, and al
 ### Signing in
 
 1. Open the address your administrator gave you.
-2. Enter your email and password, then sign in.
+2. Enter your username (or email) and password, then sign in.
 3. To sign out, use the account menu.
 
 The app signs you out after a period of no activity, and at the latest after a week. Passwords must be at least 6 characters. After **5 wrong passwords** in a row, sign-in is blocked for **15 minutes**. You see only the ledgers, loans and pages you have been given (section 11). See section 11 for password reset.
@@ -527,6 +527,8 @@ The Notebook page lists the open ledger's notebooks plus your private ones (link
 - **Not linked to a ledger** (super admins only): private to you. No other admin can see it, not even another super admin.
 - An access code sees notebooks only when you switch on its Notebook page: it can then read (never change) the notebooks linked to the ledgers it is attached to. Private notebooks stay hidden. Only the owner (or a ledger Admin or super admin) can delete a notebook, and only the owning super admin can change which ledger it is linked to.
 
+**Sharing a notebook with other ledgers.** A notebook keeps one **main ledger** and can also be shared into other ledgers (the **Also share with** switches in the notebook form). People read it through any ledger where they have a role and the Notebook page. Only the main ledger can change it: you need **Editor** or **Admin** there (**Admin** to delete it, move it or change who it is shared with). Moving it to another main ledger needs the **Admin** role in the ledger it leaves and in the one it joins. A small two-people badge with a number shows a shared notebook; hover it to see the main ledger and the others. People who sign in with an access code never see this.
+
 An entry is an ordinary **note** (a date, a title and a message, with **From** (who said it) and **For** (who it is for); names you used before are offered as suggestions) until you switch on **Important date**. An important date is a day to remember, such as an anniversary, a first service or a purchase date, with a **small note**; switch on **Repeats every year** for anniversaries and birthdays. It shows under Upcoming. This is separate from **Starred**, which only puts a star on any entry. The two switches sit side by side at the top of the form.
 
 Entries can also link to a project when the notebook is linked to a ledger. **Disable** hides an entry from the default list without deleting it, **Enable** brings it back, **Duplicate** copies it into a new pre-filled form.
@@ -616,9 +618,9 @@ Light and dark mode (the sun and moon button) and the Dashboard visuals are save
 
 ### Data downloads
 
-- **Entries (CSV)**: anyone can download it. Choose one year or all years. Deleted rows are left out. Amounts are plain decimals with a **currency column**, so any spreadsheet program can open the file.
+- **Entries (CSV)**: editors and admins can download it, limited to the pages the account may use. Choose one year or all years. Deleted rows are left out. Amounts are plain decimals with a **currency column**, so any spreadsheet program can open the file.
 - **Excel** (admin): one sheet per year, plus a **Funds** summary sheet. Each amount comes with a **currency column**.
-- **Backup (JSON)** (admin): the whole book, including deleted rows, document details and which documents are linked to which entries (`entryDocuments`). The document files are not included.
+- **Backup (JSON)** (admin, limited to the account's pages): the whole book, including deleted rows, document details and which documents are linked to which entries (`entryDocuments`). The document files are not included.
 
 Backups are also made for you every night. See the FAQ.
 
@@ -660,7 +662,7 @@ Everyone who signs in with an email and password is an **admin** of one of two t
 - **Super admin**: has everything. Every ledger, every loan and every page, so they need no specific access, and they are the only ones who can open **Admins** (create admins, access codes, all ledgers, currencies). Create ledgers, delete them, and manage other admins.
 - **Normal admin**: has only what a super admin gives them, so you can make one admin manage one ledger and another admin manage several, or one admin manage a single loan and another all of them.
 
-The sidebar has one **Administration** group. It holds **Settings** (the open ledger's setup, for admins who may use it) and, for super administrators only, **Admins**.
+The sidebar has one **Administration** group with the sections **Access**, **Ledgers**, **Settings** and **Data**. A super admin sees them as one group (with Admins, currencies and all ledgers as well); a normal admin sees **Settings** with the same sections. A ledger **Admin** manages the access codes they own in **Settings > Access**.
 
 Access for a normal admin is set in three places:
 
@@ -680,6 +682,12 @@ A super administrator sets these on the **Admins** page. **Add admin** opens a d
 The **Loans** page is new. Whoever creates a loan becomes its admin. A loan admin can change that loan, but cannot give another user access to it; only a super administrator can.
 
 To let people who sign in with an **access code** read a loan, open the loan, press **Edit**, and switch on the codes under **Shared with access codes (view only)**. A code sees only the loans switched on for it. It can read the entries and totals, and it cannot add, change, settle or delete anything, or create a loan. The code also needs the **Loans** page turned on (Admin, Access codes). A loan admin can share their own loans this way; a super administrator can share any loan.
+
+**An access code has an owner.** Each code belongs to an admin. By default it inherits that admin's pages; switch on **Own pages** for a ledger to give it a shorter list (never wider than the owner's), and it can inherit the owner's loans. For notebooks you can limit a code to **only** some notebooks or **all except** some. A super admin can press **Show code** to see a code again. Codes are always view only.
+
+**Sharing a loan with several ledgers.** A loan has a main ledger and can be shown in other ledgers too. Everyone with a role there can read it, but only **Editor** or **Admin** in the main ledger (with the Loans page) can add or change anything; elsewhere the loan is view only. Moving the main ledger needs **Admin** in both ledgers. A loan in no ledger shows **All** on the badge. Each loan shows **Created by** and the times at the bottom of its card; one info line explains the page hints.
+
+**Sharing an item.** The same rule applies to Item Vault items: shared into other ledgers they can be read there, but changing, deleting or moving them is done only in the main ledger (elsewhere the app answers that the main ledger owns it).
 
 ### Giving someone access (two steps)
 

@@ -3,14 +3,15 @@ import { api } from '../../services/dataAPI';
 import ConfirmDialog from '../common/ConfirmDialog';
 import MultiSelect from '../common/MultiSelect';
 import { errorMessage, todayISO } from '../common/format';
-import { btnPrimary, btnSecondary, Field, Toggle } from '../settings/ui';
+import { btnDanger, btnPrimary, btnSecondary, Field, Toggle } from '../settings/ui';
 import NoteForm from './NoteForm';
 import NoteCard from './NoteCard';
 import CategoryForm from './CategoryForm';
 import CategoryPage from './CategoryPage';
 import Upcoming from './Upcoming';
 import NotebookForm from './NotebookForm';
-import Stamp from '../common/Stamp';
+import { StampFooter } from '../common/Stamp';
+import SharedBadge from '../common/SharedBadge';
 import { whenText, CalendarIcon, stampText } from './shared';
 import usePageName from '../../utils/pageNames';
 
@@ -37,6 +38,8 @@ export default function NotebookPage({ nbId, catId, notebook, reloadNotebooks })
   const [form, setForm] = useState(null); // null | { note?, copyOf?, preset? }
   const [creatingCategory, setCreatingCategory] = useState(false);
   const [editingNotebook, setEditingNotebook] = useState(false);
+  const [deletingNotebook, setDeletingNotebook] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -94,6 +97,17 @@ export default function NotebookPage({ nbId, catId, notebook, reloadNotebooks })
         <CategoryForm base={base} onClose={() => setCreatingCategory(false)}
           onSaved={c => { setCreatingCategory(false); reload(); if (c?.id) window.location.hash = `#/diary/${nbId}/${c.id}`; }} />
       )}
+      {deletingNotebook && (
+        <ConfirmDialog title="Delete notebook?"
+          message={`Delete "${notebook.name}" with all its categories and entries? This cannot be undone.`}
+          confirmLabel="Delete" tone="danger" busy={deleteBusy}
+          onConfirm={async () => {
+            setDeleteBusy(true);
+            try { await api.delete(`/diary/notebooks/${notebook.id}`); reloadNotebooks(); window.location.hash = '#/diary'; }
+            catch (err) { setError(errorMessage(err)); setDeletingNotebook(false); setDeleteBusy(false); }
+          }}
+          onCancel={() => setDeletingNotebook(false)} />
+      )}
       {pendingDelete && (
         <ConfirmDialog title="Delete entry?"
           message={`Delete "${pendingDelete.title}" for good? To keep it but hide it, use Disable instead.`}
@@ -127,22 +141,23 @@ export default function NotebookPage({ nbId, catId, notebook, reloadNotebooks })
       <header className="rounded-xl border border-border bg-card p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="break-words text-xl font-semibold text-foreground">{notebook.name}</h2>
+            <h2 className="flex flex-wrap items-center gap-2 break-words text-xl font-semibold text-foreground">{notebook.name}{notebook.bookName && <SharedBadge kind="notebook" ledgerNames={notebook.ledgerNames} />}</h2>
             {notebook.description && <p className="mt-1 max-w-prose whitespace-pre-wrap break-words text-sm">{notebook.description}</p>}
             <p className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
-              <span>{notebook.bookName ? `Ledger: ${notebook.bookName}` : 'Not linked to a ledger: only you can see it'}</span>
+              {!notebook.bookName && <span className="rounded-full border border-accent/60 bg-accent/10 px-2 py-0.5 font-semibold text-accent" title="Not linked to a ledger: only you can see it">&#128274; Private, not linked to a ledger: only you can see it</span>}
               {!canEdit && <span className="rounded-full bg-muted px-2 py-0.5">View only</span>}
             </p>
-            <Stamp createdAt={notebook.createdAt} updatedAt={notebook.updatedAt} className="text-xs text-muted-foreground" />
           </div>
           {canEdit && (
             <div className="flex flex-wrap gap-2">
               <button type="button" className={btnSecondary} onClick={() => setCreatingCategory(true)}>New category</button>
               <button type="button" className={btnPrimary} onClick={() => addTo({})}>New entry</button>
               <button type="button" className={btnSecondary} onClick={() => setEditingNotebook(true)}>Edit notebook</button>
+              {notebook.canDelete && <button type="button" className={btnDanger} onClick={() => setDeletingNotebook(true)}>Delete notebook</button>}
             </div>
           )}
         </div>
+        <StampFooter createdAt={notebook.createdAt} updatedAt={notebook.updatedAt} />
       </header>
       {error && <p role="alert" className="text-sm text-negative">{error}</p>}
       <Upcoming items={upcoming} onOpen={openNote} />
@@ -158,10 +173,10 @@ export default function NotebookPage({ nbId, catId, notebook, reloadNotebooks })
                   <h2 className="min-w-0 truncate text-lg font-semibold">{c.name}</h2>
                   {c.description && <p className="mt-1 line-clamp-3 whitespace-pre-wrap break-words text-sm text-muted-foreground">{c.description}</p>}
                   <p className="mt-2 text-xs text-muted-foreground">{c.dateCount} {c.dateCount === 1 ? 'date' : 'dates'} · {c.noteCount} {c.noteCount === 1 ? 'note' : 'notes'}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{stampText(c.createdAt, c.updatedAt)}</p>
                   {c.nextDate && (
-                    <p className="mt-auto flex items-center gap-1 pt-2 text-xs font-medium text-accent"><CalendarIcon />Next: {c.nextDate} ({whenText(c.nextDaysAway)})</p>
+                    <p className="mt-2 flex items-center gap-1 text-xs font-medium text-accent"><CalendarIcon />Next: {c.nextDate} ({whenText(c.nextDaysAway)})</p>
                   )}
+                  <StampFooter createdAt={c.createdAt} updatedAt={c.updatedAt} />
                 </a>
               ))}
             </div>

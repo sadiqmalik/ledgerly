@@ -52,7 +52,15 @@ const hasResourceAnywhere = (account, key) => hasResource(account, key)
 const hasResource = (account, key) => effectiveResources(account).includes(key);
 // Loans: a register linked to a ledger needs the Loans page in that ledger; an unlinked one needs it anywhere (the global list).
 // Access to a particular register is still decided by the account's loan roles.
-const loansPageOk = (account, bookId) => Boolean(account && (account.isSuperAdmin || (bookId ? hasResource(forBook(account, bookId), 'loans') : hasResource(account, 'loans'))));
+// A register is { bookId, ledgerIds } (a plain book id or null also works): a linked one needs the page in ANY of its ledgers.
+const loansPageOk = (account, register) => {
+  if (!account) return false;
+  if (account.isSuperAdmin) return true;
+  const reg = register && typeof register === 'object' ? register : { bookId: register || null };
+  const ids = [...new Set([...(reg.bookId ? [reg.bookId] : []), ...(reg.ledgerIds || [])])];
+  if (ids.length === 0) return hasResource(account, 'loans');
+  return ids.some(id => hasResource(forBook(account, id), 'loans'));
+};
 const hasAnyResource = (account, keys) => {
   const have = effectiveResources(account);
   return keys.some(key => have.includes(key));

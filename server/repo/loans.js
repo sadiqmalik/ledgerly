@@ -6,8 +6,13 @@ const likeEscape = s => s.replace(/[\\%_]/g, m => `\\${m}`);
 
 const mapRegister = r => ({
   id: r.id, name: r.name, borrower: r.borrower, lender: r.lender, description: r.description ?? null,
-  currency: r.currency, bookId: r.book_id ?? null, createdAt: r.created_at, updatedAt: r.updated_at ?? null, settledAt: r.settled_at ?? null, settled: Boolean(r.settled_at)
+  currency: r.currency, bookId: r.book_id ?? null, createdBy: r.created_by ?? null, createdAt: r.created_at, updatedAt: r.updated_at ?? null, settledAt: r.settled_at ?? null, settled: Boolean(r.settled_at)
 });
+// ledgerIds: main ledger first, then the extra ones; ledgerNames in the same order.
+const withLedgers = (r, extraIds, names) => {
+  const ledgerIds = [...(r.bookId ? [r.bookId] : []), ...extraIds.filter(id => id !== r.bookId)];
+  return { ledgerIds, ledgerNames: ledgerIds.map(id => names[id]).filter(Boolean) };
+};
 const mapEntry = r => ({
   id: r.id, kind: r.kind, amount: r.amount, date: r.date, lender: r.lender ?? null, receiver: r.receiver ?? null, comment: r.comment ?? null,
   createdAt: r.created_at, updatedAt: r.updated_at
@@ -29,16 +34,23 @@ const createLoansRepo = db => {
       if (ids !== null && ids.length === 0) return [];
       const where = ids === null ? '' : ` WHERE id IN (${ids.map(() => '?').join(',')})`;
       const regs = (await all(`SELECT * FROM loan_registers${where} ORDER BY LOWER(name), id`, ...(ids || []))).map(mapRegister);
-      return Promise.all(regs.map(async r => ({ ...r, totals: await totalsOf(r.id) })));
+      const extras = await all('SELECT l.register_id, l.book_id, b.name FROM loan_register_ledgers l LEFT JOIN books b ON b.id = l.book_id ORDER BY l.created_at, l.book_id');
+      const names = Object.fromEntries((await all('SELECT id, name FROM books')).map(b => [b.id, b.name]));
+      return Promise.all(regs.map(async r => ({ ...r, ...withLedgers(r, extras.filter(x => x.register_id === r.id).map(x => x.book_id), names), totals: await totalsOf(r.id) })));
     },
 
     async getRegister(id) {
       const r = await first('SELECT * FROM loan_registers WHERE id = ?', id);
-      return r ? { ...mapRegister(r), totals: await totalsOf(id) } : null;
+      if (!r) return null;
+      const reg = mapRegister(r);
+      const extraIds = (await all('SELECT book_id FROM loan_register_ledgers WHERE register_id = ? ORDER BY created_at, book_id', id)).map(x => x.book_id);
+      const names = Object.fromEntries((await all('SELECT id, name FROM books')).map(b => [b.id, b.name]));
+      return { ...reg, ...withLedgers(reg, extraIds, names), totals: await totalsOf(id) };
     },
 
     async createRegister(id, d, createdBy, now) {
       await db.batch([
+        ...(d.bookId ? (d.extraLedgerIds || []) : []).map(b => run('INSERT INTO loan_register_ledgers (register_id, book_id, created_at) VALUES (?, ?, ?)', id, b, now)),
         run('INSERT INTO loan_registers (id, name, borrower, lender, description, currency, book_id, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
           id, d.name, d.borrower, d.lender, d.description ?? null, d.currency, d.bookId ?? null, createdBy.email || createdBy.id, now, now)
       ]);
@@ -49,6 +61,14 @@ const createLoansRepo = db => {
       const keys = Object.keys(cols);
       await run(`UPDATE loan_registers SET ${keys.map(k => `${k} = ?`).join(', ')}${keys.length ? ', ' : ''}updated_at = ? WHERE id = ?`,
         ...keys.map(k => cols[k]), now, id).run();
+    },
+
+    // Replaces the extra ledgers of a register.
+    async setExtraLedgers(id, bookIds, now) {
+      await db.batch([
+        run('DELETE FROM loan_register_ledgers WHERE register_id = ?', id),
+        ...bookIds.map(b => run('INSERT INTO loan_register_ledgers (register_id, book_id, created_at) VALUES (?, ?, ?)', id, b, now))
+      ]);
     },
 
     async entryCount(registerId) {
@@ -71,6 +91,7 @@ const createLoansRepo = db => {
       await db.batch([
         run('DELETE FROM loan_entries WHERE register_id = ?', id),
         run('DELETE FROM loan_registers WHERE id = ?', id),
+        run('DELETE FROM loan_register_ledgers WHERE register_id = ?', id),
         run('DELETE FROM access_code_loans WHERE register_id = ?', id),
         ...accounts.map(a => run('UPDATE accounts SET loan_memberships = ?, updated_at = ? WHERE id = ?',
           JSON.stringify(JSON.parse(a.loan_memberships).filter(m => m.registerId !== id)), now, a.id))

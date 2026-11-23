@@ -2,16 +2,20 @@ import React, { useEffect, useRef, useState } from 'react';
 import dataAPI, { api } from '../../services/dataAPI';
 import { useBooks } from '../../hooks/BooksContext';
 import { LedgerPages, pagesText } from './ResourcePicker';
+import NotebookPicker from './NotebookPicker';
 import { CODE_RESOURCES, forBook, resourcesOf } from '../../auth/resources.mjs';
 import { useAuth } from '../../auth/AuthContext';
-import { errorText, inputCls, btnPrimary, btnSecondary, btnDanger, Badge, ToggleGrid } from '../settings/ui';
+import { errorText, inputCls, btnPrimary, btnSecondary, btnDanger, btnSm, btnSmDanger, btnSmPrimary, Badge, ToggleGrid } from '../settings/ui';
 import Select from '../common/Select';
 import Modal from '../common/Modal';
+import { StampFooter } from '../common/Stamp';
 import ConfirmDialog from '../common/ConfirmDialog';
 import PromptDialog from '../common/PromptDialog';
 
 const ownOnly = (own, ids) => Object.fromEntries(ids.filter(id => Array.isArray(own[id])).map(id => [id, own[id]]));
 const union = (ids, own, pagesOf) => CODE_RESOURCES.filter(k => ids.some(id => (own[id] ?? pagesOf(id)).includes(k)));
+
+const rulesOf = (rules, ids) => Object.fromEntries(ids.filter(id => rules[id]).map(id => [id, rules[id]]));
 
 const when = iso => (iso ? new Date(iso).toLocaleString() : '—');
 
@@ -27,6 +31,7 @@ export default function AccessCodesPanel({ intent, onIntentDone, onBack, scoped 
   const [selected, setSelected] = useState([]);
   const [ownerId, setOwnerId] = useState(scoped ? me?.id || '' : '');
   const [own, setOwn] = useState({}); // own pages per ledger, for the code being created
+  const [rules, setRules] = useState({}); // notebook rules per ledger, for the code being created
   const [accounts, setAccounts] = useState([]);
   const [editing, setEditing] = useState(null); // { id, name, bookIds, own, accountId, touched }
   const [creating, setCreating] = useState(false);
@@ -74,7 +79,7 @@ export default function AccessCodesPanel({ intent, onIntentDone, onBack, scoped 
       if (c) {
         setError('');
         const o = intent.ownerId ? accounts.find(a => a.id === intent.ownerId) : null;
-        const base = { id: c.id, name: c.name, resources: c.resources || [], bookIds: c.bookIds, own: c.bookResources || {}, accountId: c.accountId || '', touched: false };
+        const base = { id: c.id, name: c.name, resources: c.resources || [], bookIds: c.bookIds, own: c.bookResources || {}, rules: c.notebookRules || {}, accountId: c.accountId || '', touched: false };
         if (o) {
           // Linking: start on this admin with only the ledgers the admin can see.
           const ids = new Set((o.isSuperAdmin ? books : books.filter(b => (o.memberships || []).some(m => m.bookId === b.id))).map(b => b.id));
@@ -86,7 +91,7 @@ export default function AccessCodesPanel({ intent, onIntentDone, onBack, scoped 
         fromAdmin.current = Boolean(intent.back);
       }
     } else if (intent.newOwnerId) {
-      setError(''); setOwnerId(intent.newOwnerId); setSelected([]); setOwn({}); setCreating(true);
+      setError(''); setOwnerId(intent.newOwnerId); setSelected([]); setOwn({}); setRules({}); setCreating(true);
       fromAdmin.current = Boolean(intent.back);
     }
     onIntentDone && onIntentDone();
@@ -110,6 +115,10 @@ export default function AccessCodesPanel({ intent, onIntentDone, onBack, scoped 
       </Select>
     </label>
   ));
+  const ownerExcludedOf = (o, bookId) => ((scoped ? me : o)?.memberships || []).find(m => m.bookId === bookId)?.notebooksExcluded || [];
+  const notebookExtra = (o, rulesMap, setRule) => (id, pages) => (pages.includes('diary') ? (
+    <NotebookPicker code bookId={id} rule={rulesMap[id]} ownerExcluded={ownerExcludedOf(o, id)} disabled={busy} onChange={r => setRule(id, r)} />
+  ) : null);
   const owner = accountOf(ownerId);
   const editOwner = accountOf(editing?.accountId);
 
@@ -120,11 +129,12 @@ export default function AccessCodesPanel({ intent, onIntentDone, onBack, scoped 
     setError('');
     setBusy(true);
     try {
-      setCreated(await dataAPI.createAccessCode(name, selected, code, union(selected, own, id => ownerPages(owner, id)), ownOnly(own, selected), scoped ? me.id : ownerId));
+      setCreated(await dataAPI.createAccessCode(name, selected, code, union(selected, own, id => ownerPages(owner, id)), ownOnly(own, selected), scoped ? me.id : ownerId, rulesOf(rules, selected)));
       setName('');
       setCode('');
       setSelected([]);
       setOwn({});
+      setRules({});
       setOwnerId('');
       closeCreating();
       load();
@@ -156,7 +166,7 @@ export default function AccessCodesPanel({ intent, onIntentDone, onBack, scoped 
     setError('');
     setBusy(true);
     try {
-      await dataAPI.setAccessCodeResources(editing.id, union(editing.bookIds, editing.own, id => (editing.accountId ? ownerPages(editOwner, id) : editing.resources)), ownOnly(editing.own, editing.bookIds), editing.bookIds, scoped ? me.id : (editing.accountId || undefined));
+      await dataAPI.setAccessCodeResources(editing.id, union(editing.bookIds, editing.own, id => (editing.accountId ? ownerPages(editOwner, id) : editing.resources)), ownOnly(editing.own, editing.bookIds), editing.bookIds, scoped ? me.id : (editing.accountId || undefined), rulesOf(editing.rules || {}, editing.bookIds));
       closeEditing();
       load();
     } catch (err) {
@@ -232,7 +242,7 @@ export default function AccessCodesPanel({ intent, onIntentDone, onBack, scoped 
         </div>
       )}
 
-      <ul className="grid items-start gap-3 grid-cols-[repeat(auto-fill,minmax(min(100%,22rem),1fr))]" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+      <ul className="grid items-stretch gap-3 grid-cols-[repeat(auto-fill,minmax(min(100%,22rem),1fr))]" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
         {codes.map(c => (
           <li key={c.id} className="flex h-full flex-col rounded-xl border border-border bg-card p-4">
             <p className="flex min-w-0 items-center gap-2 text-lg font-semibold text-foreground">
@@ -244,23 +254,22 @@ export default function AccessCodesPanel({ intent, onIntentDone, onBack, scoped 
               {Object.entries(c.bookResources || {}).map(([id, list]) => (
                 <div key={id} className="flex gap-2"><dt className="w-20 shrink-0 truncate text-muted-foreground" title={bookName(id)}>{bookName(id)}</dt><dd className="min-w-0"><span className="text-muted-foreground">own pages: </span>{pagesText(list)}</dd></div>
               ))}
-              <div className="flex gap-2"><dt className="w-20 shrink-0 text-muted-foreground">Created</dt><dd className="min-w-0">{when(c.createdAt)} by {c.createdBy}</dd></div>
-              <div className="flex gap-2"><dt className="w-20 shrink-0 text-muted-foreground">Last used</dt><dd className="min-w-0">{when(c.lastUsedAt)}</dd></div>
             </dl>
-            <div className="mt-auto flex flex-wrap gap-2 pt-3">
-              {!c.revokedAt && <button type="button" className={btnSecondary} onClick={() => { fromAdmin.current = false; setError(''); setEditing({ id: c.id, name: c.name, resources: c.resources || [], bookIds: c.bookIds, own: c.bookResources || {}, accountId: scoped ? me.id : (c.accountId || ''), touched: false }); }}>Edit</button>}
-              {!c.revokedAt && <button type="button" className={btnSecondary} onClick={() => reset(c)}>Reset code</button>}
+            <div className="mt-auto flex flex-wrap gap-1.5 pt-3">
+              {!c.revokedAt && <button type="button" className={btnSm} onClick={() => { fromAdmin.current = false; setError(''); setEditing({ id: c.id, name: c.name, resources: c.resources || [], bookIds: c.bookIds, own: c.bookResources || {}, rules: c.notebookRules || {}, accountId: scoped ? me.id : (c.accountId || ''), touched: false }); }}>Edit</button>}
+              {!c.revokedAt && <button type="button" className={btnSm} onClick={() => reset(c)}>Reset code</button>}
               {!scoped && !c.revokedAt && (
-                <button type="button" className={btnSecondary} disabled={!c.revealable || revealingId === c.id} title={c.revealable ? undefined : 'Reset this code once to make it viewable'} onClick={() => reveal(c)}>
+                <button type="button" className={btnSm} disabled={!c.revealable || revealingId === c.id} title={c.revealable ? undefined : 'Reset this code once to make it viewable'} onClick={() => reveal(c)}>
                   {revealingId === c.id ? 'Loading…' : 'Show code'}
                 </button>
               )}
-              {!c.revokedAt && <button type="button" className={btnDanger} onClick={() => revoke(c)}>Revoke</button>}
-              {c.revokedAt && <button type="button" className={btnPrimary} onClick={() => restore(c)}>Restore</button>}
-              <button type="button" className={btnDanger} disabled={deletingId === c.id} onClick={() => setDialog({ kind: 'delete', code: c })}>
+              {!c.revokedAt && <button type="button" className={btnSmDanger} onClick={() => revoke(c)}>Revoke</button>}
+              {c.revokedAt && <button type="button" className={btnSmPrimary} onClick={() => restore(c)}>Restore</button>}
+              <button type="button" className={btnSmDanger} disabled={deletingId === c.id} onClick={() => setDialog({ kind: 'delete', code: c })}>
                 {deletingId === c.id ? 'Deleting…' : 'Delete'}
               </button>
             </div>
+            <StampFooter className="!mt-0" createdAt={c.createdAt} by={c.createdBy} extra={c.lastUsedAt ? `Last used ${when(c.lastUsedAt)}` : ''} />
           </li>
         ))}
         {codes.length === 0 && <li className="text-sm text-muted-foreground">No access codes yet.</li>}
@@ -294,11 +303,12 @@ export default function AccessCodesPanel({ intent, onIntentDone, onBack, scoped 
               </label>
             </div>
             <p className="-mt-2 text-xs text-muted-foreground">8-64 characters, case-sensitive, for example family-view-2026. It is shown once, after you create it.</p>
-            {ownerSelect(ownerId, v => { setOwnerId(v); setSelected([]); setOwn({}); })}
+            {ownerSelect(ownerId, v => { setOwnerId(v); setSelected([]); setOwn({}); setRules({}); })}
             <p className="text-sm font-medium text-foreground">Ledgers and pages (view only)</p>
             <LedgerPages forCode books={ownerBooks(owner)} selected={selected} onSelect={setSelected} disabled={busy || !owner}
               own={own} onOwn={(id, v) => setOwn(p => { const n = { ...p }; if (v) n[id] = v; else delete n[id]; return n; })}
-              inheritedOf={id => ownerPages(owner, id)} />
+              inheritedOf={id => ownerPages(owner, id)}
+              extra={notebookExtra(owner, rules, (id, r) => setRules(p => { const n = { ...p }; if (r) n[id] = r; else delete n[id]; return n; }))} />
             <div className="flex flex-wrap gap-2">
               <button type="submit" className={btnPrimary} disabled={busy || !name.trim() || !(scoped ? me?.id : ownerId) || selected.length === 0}>{busy ? 'Creating...' : 'Create access code'}</button>
               <button type="button" className={btnSecondary} onClick={closeCreating} disabled={busy}>Cancel</button>
@@ -332,7 +342,8 @@ export default function AccessCodesPanel({ intent, onIntentDone, onBack, scoped 
               own={editing.own} onOwn={(id, v) => setEditing(e => { const n = { ...e.own }; if (v) n[id] = v; else delete n[id]; return { ...e, own: n, touched: true }; })}
               inheritedOf={id => (editing.accountId ? ownerPages(editOwner, id) : editing.resources)}
               allowedOf={editing.accountId ? undefined : () => CODE_RESOURCES}
-              inheritLabel={editing.accountId ? undefined : 'Same as the code\'s default pages'} />
+              inheritLabel={editing.accountId ? undefined : 'Same as the code\'s default pages'}
+              extra={notebookExtra(editOwner, editing.rules || {}, (id, r) => setEditing(e => { const n = { ...(e.rules || {}) }; if (r) n[id] = r; else delete n[id]; return { ...e, rules: n, touched: true }; }))} />
             <div className="flex flex-wrap gap-2">
               <button type="button" className={btnPrimary} disabled={busy || editing.bookIds.length === 0 || (editing.touched && !editing.accountId)} onClick={savePages}>{busy ? 'Saving...' : 'Save'}</button>
               <button type="button" className={btnSecondary} disabled={busy} onClick={closeEditing}>Cancel</button>

@@ -81,6 +81,11 @@ const parseBookResources = text => {
   } catch { return {}; }
 };
 
+const parseNotebookRules = text => {
+  if (!text) return {};
+  try { const v = JSON.parse(text); return v && typeof v === 'object' && !Array.isArray(v) ? v : {}; } catch { return {}; }
+};
+
 const toAccessCode = row => ({
   id: row.id,
   name: row.name,
@@ -90,6 +95,7 @@ const toAccessCode = row => ({
   bookResources: parseBookResources(row.book_resources),
   accountId: row.account_id ?? null,
   codeSecret: row.code_secret ?? null,
+  notebookRules: parseNotebookRules(row.notebook_rules),
   createdBy: row.created_by,
   createdAt: row.created_at,
   revokedAt: row.revoked_at ?? null,
@@ -222,13 +228,13 @@ const createD1AuthStore = db => {
     },
 
     accessCodes: {
-      async insert({ name, codeHash, bookIds, resources, bookResources = {}, accountId = null, codeSecret = null, createdBy, createdAt }) {
+      async insert({ name, codeHash, bookIds, resources, bookResources = {}, accountId = null, codeSecret = null, notebookRules = {}, createdBy, createdAt }) {
         const id = newId();
         await prep(
-          'INSERT INTO access_codes (id, name, code_hash, book_ids, resources, book_resources, account_id, code_secret, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-          id, name, codeHash, JSON.stringify(bookIds), JSON.stringify(resources), JSON.stringify(bookResources), accountId, codeSecret, createdBy, createdAt
+          'INSERT INTO access_codes (id, name, code_hash, book_ids, resources, book_resources, account_id, code_secret, notebook_rules, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          id, name, codeHash, JSON.stringify(bookIds), JSON.stringify(resources), JSON.stringify(bookResources), accountId, codeSecret, JSON.stringify(notebookRules), createdBy, createdAt
         ).run();
-        return { id, name, codeHash, bookIds, resources, bookResources, accountId, codeSecret, createdBy, createdAt, revokedAt: null, lastUsedAt: null };
+        return { id, name, codeHash, bookIds, resources, bookResources, accountId, codeSecret, notebookRules, createdBy, createdAt, revokedAt: null, lastUsedAt: null };
       },
 
       async findById(id) {
@@ -292,12 +298,12 @@ const createD1AuthStore = db => {
         return (result.meta && result.meta.changes) || 0;
       },
 
-      async setResources(id, resources, bookResources = {}, bookIds) {
-        if (bookIds) {
-          await prep('UPDATE access_codes SET resources = ?, book_resources = ?, book_ids = ? WHERE id = ?', JSON.stringify(resources), JSON.stringify(bookResources), JSON.stringify(bookIds), String(id)).run();
-          return;
-        }
-        await prep('UPDATE access_codes SET resources = ?, book_resources = ? WHERE id = ?', JSON.stringify(resources), JSON.stringify(bookResources), String(id)).run();
+      async setResources(id, resources, bookResources = {}, bookIds, notebookRules) {
+        const sets = ['resources = ?', 'book_resources = ?'];
+        const values = [JSON.stringify(resources), JSON.stringify(bookResources)];
+        if (bookIds) { sets.push('book_ids = ?'); values.push(JSON.stringify(bookIds)); }
+        if (notebookRules !== undefined) { sets.push('notebook_rules = ?'); values.push(JSON.stringify(notebookRules)); }
+        await prep(`UPDATE access_codes SET ${sets.join(', ')} WHERE id = ?`, ...values, String(id)).run();
       },
 
       async allRegisterIds() {

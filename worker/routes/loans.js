@@ -2,7 +2,7 @@
 // page and the viewer role on :r; each route adds its own minimum role. Every query is scoped by register id.
 const crypto = require('crypto');
 const { loanRoleFor, visibleLoanIds, canAccessLoan, roleFor } = require('../../server/auth/roles');
-const { loansPageOk } = require('../../server/auth/resources');
+const { loansPageOk, hasResource, forBook } = require('../../server/auth/resources');
 const { loanTotals, lenderTotals } = require('../../server/domain/loans');
 const { AppError, ForbiddenError, NotFoundError } = require('../../server/errors');
 const { z, parse, isoDate, money } = require('./validate');
@@ -13,15 +13,16 @@ const required = max => text(max).min(1);
 const currency = z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/, 'must be a 3-letter currency code');
 const kind = z.enum(['taken', 'returned']);
 
+const extraIds = z.array(z.string().min(1).max(64)).max(50).optional();
 const registerCreate = z.object({
   name: required(120), borrower: required(120), lender: required(120),
   description: text(500).nullable().optional(), currency: currency.default(() => defaultCurrency()),
-  bookId: z.string().min(1).max(64).nullable().optional()
+  bookId: z.string().min(1).max(64).nullable().optional(), extraLedgerIds: extraIds
 }).strict();
 const registerUpdate = z.object({
   name: required(120).optional(), borrower: required(120).optional(), lender: required(120).optional(),
   description: text(500).nullable().optional(), currency: currency.optional(), settled: z.boolean().optional(),
-  bookId: z.string().min(1).max(64).nullable().optional()
+  bookId: z.string().min(1).max(64).nullable().optional(), extraLedgerIds: extraIds
 }).strict();
 const entryCreate = z.object({
   kind, amount: money, date: isoDate, lender: text(120).nullable().optional(), receiver: text(120).nullable().optional(), comment: text(500).nullable().optional()
@@ -42,6 +43,15 @@ const checkLedger = async (repo, account, bookId) => {
   if (!bookId) return;
   if (!(await repo.books.get(bookId)) || !roleFor(account, bookId)) throw new NotFoundError('Ledger not found');
 };
+// Extra ledgers: only with a main ledger, never the main one, each one the account may link. Returns the clean list.
+const checkExtras = async (repo, account, mainId, ids) => {
+  const list = [...new Set(ids || [])];
+  if (list.length === 0) return [];
+  if (!mainId) throw new AppError('Extra ledgers need a main ledger', 400);
+  if (list.includes(mainId)) throw new AppError('The main ledger is already linked', 400);
+  for (const id of list) await checkLedger(repo, account, id);
+  return list;
+};
 const ENTRY_COLS = { kind: 'kind', amount: 'amount', date: 'date', lender: 'lender', receiver: 'receiver', comment: 'comment' };
 const toCols = (data, map) => {
   const cols = {};
@@ -49,10 +59,41 @@ const toCols = (data, map) => {
   return cols;
 };
 
+// A register linked to a ledger can be changed only from its MAIN ledger: an Editor or Admin there who also has the Loans page there.
+// Anyone reaching it through a shared-in ledger (or as a Viewer in the main one) is read-only. Unlinked registers: no extra rule.
+const mainLedgerWrite = (account, bookId) => {
+  if (account.isSuperAdmin || !bookId) return true;
+  const role = roleFor(account, bookId);
+  return (role === 'editor' || role === 'admin') && hasResource(forBook(account, bookId), 'loans');
+};
+
 const registerLoanRoutes = (app, { repo }) => {
   const R = repo.loans;
   const now = () => new Date().toISOString();
-  const view = (register, account) => ({ ...register, role: loanRoleFor(account, register.id) });
+  const view = (register, account) => {
+    const role = loanRoleFor(account, register.id);
+    const canWrite = mainLedgerWrite(account, register.bookId) && (role === 'editor' || role === 'admin');
+    const shown = { ...register, role: canWrite || role === 'viewer' || !role ? role : 'viewer', canWrite };
+    if (!account.accessCode) return shown;
+    // An access code is only ever told about ledgers it can open itself: the others are neither listed nor named, and a main
+    // ledger it cannot open is replaced by the first it can.
+    const mine = new Set((account.memberships || []).map(m => m.bookId));
+    const ids = register.ledgerIds || [];
+    const keep = ids.map((id, i) => ({ id, name: (register.ledgerNames || [])[i] })).filter(x => mine.has(x.id));
+    return { ...shown, bookId: !register.bookId ? null : (mine.has(register.bookId) ? register.bookId : (keep[0]?.id ?? null)), ledgerIds: keep.map(x => x.id), ledgerNames: keep.map(x => x.name).filter(Boolean) };
+  };
+
+  // Who created a register, as a name: the account's name (or username) when the stored email or id still matches one.
+  const withCreators = async registers => {
+    if (!registers.some(r => r.createdBy)) return registers;
+    const byKey = new Map();
+    for (const a of await repo.authStore.accounts.list()) { byKey.set(String(a.id), a); if (a.email) byKey.set(a.email.toLowerCase(), a); }
+    return registers.map(r => {
+      const a = byKey.get(String(r.createdBy || '').toLowerCase()) || byKey.get(String(r.createdBy || ''));
+      return { ...r, createdByName: a ? (a.name || a.username) : (String(r.createdBy || '').includes('@') ? r.createdBy : '') };
+    });
+  };
+  const shown = async (register, account) => view((await withCreators([register]))[0], account);
 
   const need = (c, role) => {
     if (!canAccessLoan(c.get('account'), c.req.param('r'), role)) throw new ForbiddenError('Your account cannot do this for this loan register');
@@ -60,6 +101,13 @@ const registerLoanRoutes = (app, { repo }) => {
   const loadRegister = async c => {
     const register = await R.getRegister(c.req.param('r'));
     if (!register) throw new NotFoundError('Loan register not found');
+    return register;
+  };
+  // need() plus, for a write, the main-ledger rule; returns the register.
+  const needWrite = async (c, role) => {
+    need(c, role);
+    const register = await loadRegister(c);
+    if (!mainLedgerWrite(c.get('account'), register.bookId)) throw new ForbiddenError('Only an Editor or Admin of this loan\'s main ledger can change it');
     return register;
   };
   // An entry's lender must be one of the names in the register's lender field ("A & B"). Returns the register's spelling.
@@ -71,7 +119,7 @@ const registerLoanRoutes = (app, { repo }) => {
     return hit;
   };
   const openRegister = async c => {
-    const register = await loadRegister(c);
+    const register = await needWrite(c, 'editor');
     if (register.settled) throw new AppError('This loan is settled. Reopen it to change its entries.', 409);
     return register;
   };
@@ -83,7 +131,7 @@ const registerLoanRoutes = (app, { repo }) => {
 
   app.get('/api/loans', async c => {
     const account = c.get('account');
-    return c.json((await R.listRegisters(visibleLoanIds(account))).filter(r => loansPageOk(account, r.bookId)).map(r => view(r, account)));
+    return c.json((await withCreators((await R.listRegisters(visibleLoanIds(account))).filter(r => loansPageOk(account, r)))).map(r => view(r, account)));
   });
 
   app.post('/api/loans', async c => {
@@ -93,23 +141,24 @@ const registerLoanRoutes = (app, { repo }) => {
     data.description = blank(data.description);
     await repo.currencies.assertUsable(data.currency);
     await checkLedger(repo, account, data.bookId);
+    if (!mainLedgerWrite(account, data.bookId)) throw new ForbiddenError('Only an Editor or Admin of a ledger can add a loan to it');
+    data.extraLedgerIds = await checkExtras(repo, account, data.bookId, data.extraLedgerIds);
     const id = crypto.randomUUID();
     await R.createRegister(id, data, account, now());
     if (!account.isSuperAdmin) await R.grantAdmin(account.id, id);
     // The session account predates the new membership, so the creator's role is stated, not derived.
-    return c.json({ ...(await R.getRegister(id)), role: 'admin' }, 201);
+    return c.json({ ...(await withCreators([await R.getRegister(id)]))[0], role: 'admin' }, 201);
   });
 
   app.get('/api/loans/:r', async c => {
     need(c, 'viewer');
-    return c.json(view(await loadRegister(c), c.get('account')));
+    return c.json(await shown(await loadRegister(c), c.get('account')));
   });
 
   // Access codes that may view this loan (view-only). Loan admins and super administrators only.
   // The list holds active codes by name, never their secrets; `shared` holds the ids that have access now.
   app.get('/api/loans/:r/access-codes', async c => {
-    need(c, 'admin');
-    const register = await loadRegister(c);
+    const register = await needWrite(c, 'admin');
     const codes = repo.authStore.accessCodes;
     const [all, shared] = await Promise.all([codes.list(), codes.codeIdsForLoan(register.id)]);
     const active = all.filter(code => !code.revokedAt);
@@ -118,8 +167,7 @@ const registerLoanRoutes = (app, { repo }) => {
   });
 
   app.put('/api/loans/:r/access-codes', async c => {
-    need(c, 'admin');
-    const register = await loadRegister(c);
+    const register = await needWrite(c, 'admin');
     const { codeIds } = parse(shareCodes, c.get('body'));
     const wanted = [...new Set(codeIds)];
     const codes = repo.authStore.accessCodes;
@@ -137,8 +185,7 @@ const registerLoanRoutes = (app, { repo }) => {
   });
 
   app.put('/api/loans/:r', async c => {
-    need(c, 'admin');
-    const register = await loadRegister(c);
+    const register = await needWrite(c, 'admin');
     const { settled, ...data } = parse(registerUpdate, c.get('body'));
     if (settled === true && !register.settled && register.totals.balance !== 0) {
       throw new AppError('A loan can be settled only when the remaining balance is zero', 409);
@@ -148,15 +195,27 @@ const registerLoanRoutes = (app, { repo }) => {
     }
     if (data.currency !== undefined && data.currency !== register.currency) await repo.currencies.assertUsable(data.currency);
     if (data.bookId !== undefined) await checkLedger(repo, c.get('account'), data.bookId);
-    const cols = toCols(data, REGISTER_COLS);
+    // Moving a loan to another main ledger needs the Admin role in the ledger it leaves and in the one it joins (super admin always).
+    if (data.bookId !== undefined && (data.bookId || null) !== (register.bookId || null) && !c.get('account').isSuperAdmin) {
+      const account = c.get('account');
+      if (register.bookId && roleFor(account, register.bookId) !== 'admin') throw new ForbiddenError('Only an Admin of the ledger this loan is in can move it');
+      if (data.bookId && roleFor(account, data.bookId) !== 'admin') throw new ForbiddenError('You need the Admin role in the ledger you are moving it to');
+    }
+    const { extraLedgerIds, ...regData } = data;
+    const mainId = data.bookId !== undefined ? (data.bookId || null) : register.bookId;
+    // Extra ledgers change when they are sent, or when the main ledger changes (they then must not include it, or exist without a main).
+    let extras;
+    if (extraLedgerIds !== undefined) extras = await checkExtras(repo, c.get('account'), mainId, (extraLedgerIds || []).filter(id => data.bookId === undefined || id !== mainId)); // a new main ledger is dropped from the extras
+    else if (data.bookId !== undefined) extras = mainId ? register.ledgerIds.filter(id => id !== register.bookId && id !== mainId) : [];
+    const cols = toCols(regData, REGISTER_COLS);
     if (settled !== undefined && settled !== register.settled) cols.settled_at = settled ? now() : null;
     await R.updateRegister(register.id, cols, now());
-    return c.json(view(await R.getRegister(register.id), c.get('account')));
+    if (extras !== undefined) await R.setExtraLedgers(register.id, extras, now());
+    return c.json(await shown(await R.getRegister(register.id), c.get('account')));
   });
 
   app.delete('/api/loans/:r', async c => {
-    need(c, 'admin');
-    const register = await loadRegister(c);
+    const register = await needWrite(c, 'admin');
     if (await R.entryCount(register.id) > 0) throw new AppError('Cannot delete a register that has entries', 409);
     await R.removeRegister(register.id);
     return c.json({ success: true });
@@ -169,11 +228,10 @@ const registerLoanRoutes = (app, { repo }) => {
     const rows = await R.listEntries(register.id, f);
     const filtered = Boolean(f.kind || f.from || f.to || f.q);
     const all = filtered ? await R.listEntries(register.id) : rows;
-    return c.json({ register: view(register, c.get('account')), rows, totals: loanTotals(rows), byLender: lenderTotals(all) });
+    return c.json({ register: await shown(register, c.get('account')), rows, totals: loanTotals(rows), byLender: lenderTotals(all) });
   });
 
   app.post('/api/loans/:r/entries', async c => {
-    need(c, 'editor');
     const register = await openRegister(c);
     const data = parse(entryCreate, c.get('body'));
     data.receiver = blank(data.receiver);
@@ -185,7 +243,6 @@ const registerLoanRoutes = (app, { repo }) => {
   });
 
   app.put('/api/loans/:r/entries/:id', async c => {
-    need(c, 'editor');
     const register = await openRegister(c);
     const entry = await loadEntry(c);
     const data = parse(entryUpdate, c.get('body'));
@@ -195,7 +252,6 @@ const registerLoanRoutes = (app, { repo }) => {
   });
 
   app.delete('/api/loans/:r/entries/:id', async c => {
-    need(c, 'editor');
     const register = await openRegister(c);
     const entry = await loadEntry(c);
     await R.softDeleteEntry(register.id, entry.id, now());

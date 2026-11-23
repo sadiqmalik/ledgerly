@@ -13,7 +13,7 @@ import MultiSelect from '../common/MultiSelect';
 import { inputCls, btnPrimary, btnSecondary, btnDanger, Field } from '../settings/ui';
 import Select from '../common/Select';
 import FilePicker from '../common/FilePicker';
-import Stamp from '../common/Stamp';
+import { StampFooter } from '../common/Stamp';
 
 const MAX_BYTES = 10 * 1024 * 1024;
 
@@ -227,7 +227,6 @@ export default function Documents() {
                 {projLink(d) && <span>{projLink(d)}</span>}
               </div>
               {d.comment && <p className="mt-2 whitespace-pre-wrap break-words text-muted-foreground">{d.comment}</p>}
-              <Stamp createdAt={d.createdAt} updatedAt={d.updatedAt} className="mt-2 text-xs text-muted-foreground" />
               {!!d.entries?.length && (
                 <div className="mt-2 flex min-w-0 flex-wrap gap-1.5 text-xs" onClick={e => e.stopPropagation()}>
                   {d.entries.map(e => (
@@ -248,6 +247,7 @@ export default function Documents() {
                   </span>
                 )}
               </div>
+              <StampFooter createdAt={d.createdAt} updatedAt={d.updatedAt} />
             </div>
           ))}
         </div>

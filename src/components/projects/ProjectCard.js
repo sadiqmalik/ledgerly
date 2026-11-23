@@ -2,7 +2,8 @@ import React from 'react';
 import Amount from '../common/Amount';
 import FundDot from '../common/FundDot';
 import { kindBadge, dateRange, BudgetBar } from './shared';
-import Stamp from '../common/Stamp';
+import { StampFooter } from '../common/Stamp';
+import { Toggle } from '../settings/ui';
 
 // One project as a boxed card, the same style as the loan cards: title and badges, a muted subtitle, a small table of
 // figures with the net spent as the bold total line, then the budget bar. The whole card opens the project; the
@@ -17,9 +18,9 @@ export default function ProjectCard({ project: p, fund, base, currency, foreign,
         <h2 className="min-w-0 truncate text-lg font-semibold" title={p.name}>{p.name}</h2>
         <span className="flex shrink-0 items-center gap-1.5">
           {p.status === 'closed' && <span className={kindBadge}>closed</span>}
-          <label className="flex" onClick={e => e.stopPropagation()}>
-            <input type="checkbox" className="size-4 accent-[var(--accent)]" aria-label={`Select ${p.name}`} checked={picked} onChange={() => onToggle(p.id)} />
-          </label>
+          <span className="flex" onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()} title="Select for bulk actions">
+            <Toggle compact ariaLabel={`Select ${p.name}`} checked={picked} onChange={() => onToggle(p.id)} />
+          </span>
         </span>
       </div>
       <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-sm text-muted-foreground">
@@ -28,7 +29,6 @@ export default function ProjectCard({ project: p, fund, base, currency, foreign,
         <span className={kindBadge}>{p.kind}</span>
       </p>
       <p className="text-xs text-muted-foreground">{dateRange(p)} &middot; {t.count} {t.count === 1 ? 'entry' : 'entries'}</p>
-      <Stamp createdAt={p.createdAt} updatedAt={p.updatedAt} className="text-xs text-muted-foreground" />
       <dl className="mt-3 space-y-1 text-sm">
         <div className="flex justify-between gap-2"><dt className="text-muted-foreground">Out (debit)</dt><dd><Amount currency={base} minor={t.out || 0} /></dd></div>
         <div className="flex justify-between gap-2"><dt className="text-muted-foreground">In (credit)</dt><dd><Amount currency={base} minor={t.in || 0} /></dd></div>
@@ -44,6 +44,7 @@ export default function ProjectCard({ project: p, fund, base, currency, foreign,
           <div className="mt-1 text-xs text-muted-foreground">Budget <Amount currency={currency} minor={p.budget} /></div>
         </div>
       ) : null}
+      <StampFooter createdAt={p.createdAt} updatedAt={p.updatedAt} />
     </div>
   );
 }

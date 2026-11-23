@@ -129,7 +129,7 @@ const createApi = ({ repo, auth, allowedOrigin = 'https://app.ledgerly.test', en
     // A loan linked to a ledger also needs the Loans page in that ledger (the same answer whether or not it exists).
     if (register && !account.isSuperAdmin) {
       const found = await repo.loans.getRegister(register);
-      if (found && !loansPageOk(account, found.bookId)) throw new ForbiddenError('Your account cannot use this loan register');
+      if (found && !loansPageOk(account, found)) throw new ForbiddenError('Your account cannot use this loan register');
     }
     return next();
   });

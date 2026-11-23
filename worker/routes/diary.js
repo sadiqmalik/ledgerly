@@ -1,12 +1,13 @@
 // Notebooks: several notebooks, each with categories (a person or topic) and entries (notes and important dates).
-// A notebook is linked to one ledger or to none:
+// A notebook is linked to one ledger (its main one) or to none, and can also be shared with extra ledgers (diary_notebook_ledgers);
+// it opens through any ledger where the person has a role, the Notebook page and passes the notebook rules, with the highest role:
 //  - linked: it follows that ledger's access. A super administrator, or an admin who has the Notebook page and a role in
 //    the ledger, can open it; Viewer reads, Editor and Admin change it.
 //  - not linked: only the super administrator who owns it can open it (not even another super administrator).
 // Access codes never reach it. A notebook the account cannot use answers 404, so its existence is not revealed.
 const { z, parse, isoDate, id, notFound, flag } = require('./validate');
 const { hasResource, hasResourceAnywhere, forBook } = require('../../server/auth/resources');
-const { RANK, roleFor } = require('../../server/auth/roles');
+const { RANK, roleFor, notebookRuleOf, notebookAllowed } = require('../../server/auth/roles');
 const { ConflictError, ForbiddenError, AppError } = require('../../server/errors');
 
 const text = max => z.string().trim().max(max);
@@ -27,8 +28,9 @@ const createSchema = z.object({
 const updateSchema = z.object(Object.fromEntries(Object.entries(fields).map(([k, v]) => [k, v.optional()]))).strict();
 const categorySchema = z.object({ name: text(80).min(1), description: text(2000).nullable().optional() }).strict();
 const categoryUpdateSchema = z.object({ name: text(80).min(1).optional(), description: text(2000).nullable().optional() }).strict();
-const notebookSchema = z.object({ name: text(80).min(1), description: text(2000).nullable().optional(), bookId: id.nullable().optional() }).strict();
-const notebookUpdateSchema = z.object({ name: text(80).min(1).optional(), description: text(2000).nullable().optional(), bookId: id.nullable().optional() }).strict();
+const extraIds = z.array(id).max(50);
+const notebookSchema = z.object({ name: text(80).min(1), description: text(2000).nullable().optional(), bookId: id.nullable().optional(), extraLedgerIds: extraIds.optional() }).strict();
+const notebookUpdateSchema = z.object({ name: text(80).min(1).optional(), description: text(2000).nullable().optional(), bookId: id.nullable().optional(), extraLedgerIds: extraIds.optional() }).strict();
 const upcomingQuery = z.object({ days: z.coerce.number().int().min(1).max(366).optional(), today: isoDate.optional(), category: z.string().optional() });
 const listQuery = z.object({
   project: z.string().optional(), q: z.string().trim().max(200).optional(), from: isoDate.optional(), to: isoDate.optional(),
@@ -77,32 +79,76 @@ const registerDiaryRoutes = (app, { repo }) => {
     if (!account.isSuperAdmin && !hasResourceAnywhere(account, 'diary')) throw new ForbiddenError('This account cannot use the Notebook');
     return account;
   };
-  // What this account may do with a notebook row, or null when it may not open it at all.
-  const rights = (account, nb) => {
-    if (!nb.book_id) return account.isSuperAdmin && nb.owner_id === account.id ? { canEdit: true, isOwner: true, canDelete: true, canRelink: true } : null;
-    const role = roleFor(account, nb.book_id);
-    if (!role || (!account.isSuperAdmin && !hasResource(forBook(account, nb.book_id), 'diary'))) return null;
-    if (account.accessCode) return { canEdit: false, isOwner: false, canDelete: false, canRelink: false };
-    const isOwner = nb.owner_id === account.id;
-    return { canEdit: RANK[role] >= RANK.editor, isOwner, canDelete: isOwner || role === 'admin', canRelink: account.isSuperAdmin && isOwner };
+  // The extra ledgers each notebook is shared with (main ledger not included), and every ledger's name and state.
+  const loadShares = async () => {
+    const extras = new Map();
+    for (const row of await L.all('SELECT notebook_id, book_id FROM diary_notebook_ledgers ORDER BY created_at, book_id')) {
+      extras.set(row.notebook_id, [...(extras.get(row.notebook_id) || []), row.book_id]);
+    }
+    const books = new Map((await L.all('SELECT id, name, active FROM books')).map(b => [b.id, b]));
+    return { extras, books };
   };
-  const view = (nb, r, counts = {}) => ({
-    id: nb.id, name: nb.name, description: nb.description, bookId: nb.book_id, bookName: nb.book_name ?? null,
-    canEdit: r.canEdit, canDelete: r.canDelete, canRelink: r.canRelink, isOwner: r.isOwner, createdAt: nb.created_at, updatedAt: nb.updated_at,
-    noteCount: counts.note || 0, dateCount: counts.date || 0, categoryCount: counts.categories || 0
-  });
+  // Whether this account may open the notebook through one ledger: a role there, the Notebook page there and the notebook rules there.
+  const roleThrough = (account, nb, bookId) => {
+    const role = roleFor(account, bookId);
+    if (!role || (!account.isSuperAdmin && !hasResource(forBook(account, bookId), 'diary'))) return null;
+    // A notebook the account was left out of (excluded, or not in the code's "only" list) stays closed; the notebook's own creator keeps theirs.
+    if (nb.owner_id !== account.id && !notebookAllowed(notebookRuleOf(account, bookId), nb.id)) return null;
+    return role;
+  };
+  // What this account may do with a notebook row, or null when it may not open it at all. It can open it through any of the
+  // notebook's ledgers (main or extra) that passes every check; the role is the highest of those. `inactive` is true when
+  // every ledger it comes through is deactivated (a super administrator is never held back).
+  const rights = (account, nb, shares) => {
+    if (!nb.book_id) return account.isSuperAdmin && nb.owner_id === account.id ? { canEdit: true, isOwner: true, canDelete: true, canRelink: true, canShare: true } : null;
+    const granted = [nb.book_id, ...((shares && shares.extras.get(nb.id)) || [])]
+      .map(bookId => ({ bookId, role: roleThrough(account, nb, bookId) })).filter(g => g.role);
+    if (!granted.length) return null;
+    const isLive = g => account.isSuperAdmin || !shares || !shares.books.get(g.bookId) || shares.books.get(g.bookId).active !== 0;
+    const live = granted.filter(isLive);
+    const pool = live.length ? live : granted;
+    if (account.accessCode) return { canEdit: false, isOwner: false, canDelete: false, canRelink: false, canShare: false, inactive: !live.length };
+    // Writing needs the MAIN ledger itself (Editor+, Notebook page, not left out); a ledger it is only shared into is view only.
+    const main = granted.find(g => g.bookId === nb.book_id);
+    const mainRole = main && isLive(main) ? main.role : null;
+    const canEdit = !!mainRole && RANK[mainRole] >= RANK.editor;
+    const isOwner = nb.owner_id === account.id;
+    const mainAdmin = mainRole === 'admin';
+    return { canEdit, isOwner, canDelete: canEdit && (isOwner || mainAdmin), canRelink: canEdit && (account.isSuperAdmin || mainAdmin), canShare: canEdit && (account.isSuperAdmin || isOwner || mainAdmin), inactive: !live.length };
+  };
+  const view = (nb, r, counts = {}, shares, account) => {
+    const extra = (shares && shares.extras.get(nb.id)) || [];
+    const ids = nb.book_id ? [nb.book_id, ...extra] : [];
+    if (account && account.accessCode && nb.book_id) {
+      // An access code is only told about ledgers it can open itself; a main ledger it cannot open is replaced by the first it can.
+      const mine = new Set((account.memberships || []).map(m => m.bookId));
+      const nameOf = x => (x === nb.book_id ? nb.book_name : shares?.books.get(x)?.name) ?? null;
+      const keep = ids.filter(x => mine.has(x));
+      const main = mine.has(nb.book_id) ? nb.book_id : (keep[0] ?? null);
+      return {
+        id: nb.id, name: nb.name, description: nb.description, bookId: main, mainLedgerId: main, bookName: main ? nameOf(main) : null,
+        ledgerIds: keep, ledgerNames: keep.map(x => nameOf(x) ?? x),
+        canEdit: r.canEdit, canDelete: r.canDelete, canRelink: r.canRelink, canShare: !!r.canShare, isOwner: r.isOwner, createdAt: nb.created_at, updatedAt: nb.updated_at,
+        noteCount: counts.note || 0, dateCount: counts.date || 0, categoryCount: counts.categories || 0
+      };
+    }
+    return {
+      id: nb.id, name: nb.name, description: nb.description, bookId: nb.book_id, mainLedgerId: nb.book_id, bookName: nb.book_name ?? null,
+      ledgerIds: ids, ledgerNames: ids.map((x, i) => (i === 0 ? nb.book_name : shares?.books.get(x)?.name) ?? x),
+      canEdit: r.canEdit, canDelete: r.canDelete, canRelink: r.canRelink, canShare: !!r.canShare, isOwner: r.isOwner, createdAt: nb.created_at, updatedAt: nb.updated_at,
+      noteCount: counts.note || 0, dateCount: counts.date || 0, categoryCount: counts.categories || 0
+    };
+  };
   // Loads notebook :n and checks the caller may open it (and change it when edit is true).
   const open = async (c, { edit = false } = {}) => {
     const account = who(c);
     const nb = await L.first(`${NB_SELECT} WHERE n.id = ?`, c.req.param('n'));
-    const r = nb && rights(account, nb);
+    const shares = nb && await loadShares();
+    const r = nb && rights(account, nb, shares);
     if (!r) throw notFound('Notebook');
-    if (nb.book_id && !account.isSuperAdmin) {
-      const book = await repo.books.get(nb.book_id);
-      if (book && book.active === 0) throw new AppError('This ledger is deactivated. A super administrator can reactivate it.', 423);
-    }
+    if (r.inactive) throw new AppError('This ledger is deactivated. A super administrator can reactivate it.', 423);
     if (edit && !r.canEdit) throw new ForbiddenError('This notebook is view only for your account');
-    return { account, nb, r };
+    return { account, nb, r, shares };
   };
   const checkBookWrite = async (account, bookId) => {
     if (!bookId) return;
@@ -137,7 +183,8 @@ const registerDiaryRoutes = (app, { repo }) => {
   app.get(root, async c => {
     const account = who(c);
     const all = await L.all(`${NB_SELECT} ORDER BY LOWER(n.name), n.id`);
-    const mine = all.map(nb => ({ nb, r: rights(account, nb) })).filter(x => x.r);
+    const shares = await loadShares();
+    const mine = all.map(nb => ({ nb, r: rights(account, nb, shares) })).filter(x => x.r);
     const counts = new Map();
     for (const row of await L.all('SELECT notebook_id, kind, COUNT(*) AS n FROM diary_notes WHERE active = 1 GROUP BY notebook_id, kind')) {
       counts.set(row.notebook_id, { ...(counts.get(row.notebook_id) || {}), [row.kind]: row.n });
@@ -145,41 +192,85 @@ const registerDiaryRoutes = (app, { repo }) => {
     for (const row of await L.all('SELECT notebook_id, COUNT(*) AS n FROM diary_categories GROUP BY notebook_id')) {
       counts.set(row.notebook_id, { ...(counts.get(row.notebook_id) || {}), categories: row.n });
     }
-    return c.json(mine.map(({ nb, r }) => view(nb, r, counts.get(nb.id))));
+    return c.json(mine.map(({ nb, r }) => view(nb, r, counts.get(nb.id), shares, account)));
   });
+
+  // For the Admin screens: the notebooks linked to one ledger, so a super administrator (or that ledger's Admin, for the ones
+  // they may open themselves) can leave some out for an admin or an access code. Names only.
+  app.get('/api/diary/ledger-notebooks', async c => {
+    const account = c.get('account');
+    const bookId = String(c.req.query('bookId') || '');
+    if (!account || account.accessCode || !bookId || (!account.isSuperAdmin && roleFor(account, bookId) !== 'admin')) throw new ForbiddenError('Only an Admin of this ledger can list its notebooks');
+    const shares = await loadShares();
+    const rows = await L.all(`${NB_SELECT} WHERE n.book_id = ? OR n.id IN (SELECT notebook_id FROM diary_notebook_ledgers WHERE book_id = ?) ORDER BY LOWER(n.name), n.id`, bookId, bookId);
+    return c.json(rows.filter(nb => account.isSuperAdmin || rights(account, nb, shares)).map(nb => ({ id: nb.id, name: nb.name })));
+  });
+
+  // The extra ledgers asked for: not the main one, no repeats, each one the account may put a notebook into.
+  const cleanExtras = async (account, mainId, wanted, already = []) => {
+    const list = [...new Set(wanted)];
+    if (list.length && !mainId) throw new AppError('A notebook with no ledger cannot be shared with other ledgers', 400);
+    if (list.includes(mainId)) throw new AppError('The linked ledger is already the main one', 400);
+    for (const x of list.filter(y => !already.includes(y))) await checkBookWrite(account, x);
+    // Ledgers the account cannot see are not removed by it.
+    for (const x of already.filter(y => !list.includes(y))) if (!roleFor(account, x)) throw new ForbiddenError('You cannot remove a ledger you do not have');
+    return list;
+  };
+  const extraRows = (nbId, list, at) => list.map(x => L.run('INSERT INTO diary_notebook_ledgers (notebook_id, book_id, created_at) VALUES (?, ?, ?)', nbId, x, at));
 
   app.post(root, async c => {
     const account = who(c);
     const data = parse(notebookSchema, c.get('body'));
     if (!data.bookId && !account.isSuperAdmin) throw new ForbiddenError('Only a super administrator can keep a notebook that is not linked to a ledger');
     await checkBookWrite(account, data.bookId);
+    const extras = await cleanExtras(account, data.bookId || null, data.extraLedgerIds || []);
     const nid = crypto.randomUUID();
     const at = now();
-    await L.run('INSERT INTO diary_notebooks (id, owner_id, book_id, name, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      nid, account.id, data.bookId || null, data.name, data.description || null, at, at).run();
+    await repo.ledger.batch([
+      L.run('INSERT INTO diary_notebooks (id, owner_id, book_id, name, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        nid, account.id, data.bookId || null, data.name, data.description || null, at, at),
+      ...extraRows(nid, extras, at)
+    ]);
     const nb = await L.first(`${NB_SELECT} WHERE n.id = ?`, nid);
-    return c.json(view(nb, rights(account, nb)), 201);
+    const shares = await loadShares();
+    return c.json(view(nb, rights(account, nb, shares), {}, shares, account), 201);
   });
 
   app.put(`${root}/:n`, async c => {
-    const { account, nb, r } = await open(c, { edit: true });
+    const { account, nb, r, shares } = await open(c, { edit: true });
     const data = parse(notebookUpdateSchema, c.get('body'));
     let bookId = nb.book_id;
     if (data.bookId !== undefined && (data.bookId || null) !== nb.book_id) {
-      if (!r.canRelink) throw new ForbiddenError('Only the super administrator who owns this notebook can change its ledger');
+      if (!r.canRelink) throw new ForbiddenError('Only a super administrator or an Admin of its ledger can move it to another ledger');
+      if (!data.bookId && !account.isSuperAdmin) throw new ForbiddenError('Only a super administrator can keep a notebook that is not linked to a ledger');
       await checkBookWrite(account, data.bookId);
+      if (!account.isSuperAdmin && roleFor(account, data.bookId) !== 'admin') throw new ForbiddenError('You need the Admin role in the ledger you move it to');
       bookId = data.bookId || null;
     }
+    // Sharing: the current extras stay unless asked otherwise; a new main ledger drops out of them, and no main ledger means none.
+    const current = shares.extras.get(nb.id) || [];
+    let extras = bookId ? current.filter(x => x !== bookId) : [];
+    if (data.extraLedgerIds !== undefined) {
+      extras = [...new Set(data.extraLedgerIds)];
+      const changed = extras.length !== current.length || extras.some(x => !current.includes(x));
+      if (changed && !r.canShare) {
+        throw new ForbiddenError('Only the notebook owner or an Admin of its ledger can change the ledgers it is shared with');
+      }
+      extras = changed ? await cleanExtras(account, bookId, extras, current) : extras;
+    }
+    const extrasChanged = extras.length !== current.length || extras.some((x, i) => x !== current[i]);
     const at = now();
     await repo.ledger.batch([
       L.run('UPDATE diary_notebooks SET name = ?, description = ?, book_id = ?, updated_at = ? WHERE id = ?',
         data.name ?? nb.name, data.description === undefined ? nb.description : (data.description || null), bookId, at, nb.id),
       // Entries keep the notebook's ledger (a notebook with no ledger uses an empty one), and lose project links of the old one.
       L.run('UPDATE diary_notes SET book_id = ? WHERE notebook_id = ?', bookId || '', nb.id),
-      ...(bookId !== nb.book_id ? [L.run('UPDATE diary_notes SET project_id = NULL WHERE notebook_id = ?', nb.id)] : [])
+      ...(bookId !== nb.book_id ? [L.run('UPDATE diary_notes SET project_id = NULL WHERE notebook_id = ?', nb.id)] : []),
+      ...(extrasChanged ? [L.run('DELETE FROM diary_notebook_ledgers WHERE notebook_id = ?', nb.id), ...extraRows(nb.id, extras, at)] : [])
     ]);
     const next = await L.first(`${NB_SELECT} WHERE n.id = ?`, nb.id);
-    return c.json(view(next, rights(account, next)));
+    const fresh = await loadShares();
+    return c.json(view(next, rights(account, next, fresh), {}, fresh, account));
   });
 
   // Deleting a notebook removes its categories and entries too.
@@ -189,6 +280,7 @@ const registerDiaryRoutes = (app, { repo }) => {
     await repo.ledger.batch([
       L.run('DELETE FROM diary_notes WHERE notebook_id = ?', nb.id),
       L.run('DELETE FROM diary_categories WHERE notebook_id = ?', nb.id),
+      L.run('DELETE FROM diary_notebook_ledgers WHERE notebook_id = ?', nb.id),
       L.run('DELETE FROM diary_notebooks WHERE id = ?', nb.id)
     ]);
     return c.json({ success: true });

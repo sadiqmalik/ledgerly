@@ -1,6 +1,6 @@
 # Plan: link access codes to admin accounts, and usernames
 
-Status: phases 1 and 2 built; phase 3 (require an owner on every code) not done.
+Status: phases 1 and 2 built (owners, inherited pages, per-notebook rules, Show code, admin-managed codes; migrations 0025 to 0029); phase 3 (require an owner on every code) not done.
 
 This version keeps access codes as they are (several codes, their own screen) and
 links each one to an admin account. It replaces an earlier idea of turning codes into accounts.

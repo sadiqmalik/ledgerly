@@ -149,6 +149,47 @@ describe('page resources', () => {
     assert.equal((await on.get(`/api/loans/${linked.id}`)).status, 200);
   });
 
+  it('a loan shared with a second ledger opens when any linked ledger gives the Loans page', async () => {
+    const shared = (await ctx.api.post('/api/loans').send({ name: 'Shared', borrower: 'A', lender: 'B', bookId: BOOK, extraLedgerIds: ['personal'] })).body;
+    assert.deepEqual(shared.ledgerIds, [BOOK, 'personal']);
+    assert.deepEqual(shared.ledgerNames, ['Family', 'Personal']);
+    const loans = [{ registerId: shared.id, role: 'viewer' }];
+    const memberships = (mainPages, extraPages) => [{ bookId: BOOK, role: 'editor', resources: mainPages }, { bookId: 'personal', role: 'editor', resources: extraPages }];
+    const onlyExtra = await loginAs('extraonly', memberships(['dashboard'], ['dashboard', 'loans']), loans);
+    assert.deepEqual((await onlyExtra.get('/api/loans')).body.map(r => r.name), ['Shared']);
+    assert.equal((await onlyExtra.get(`/api/loans/${shared.id}`)).status, 200);
+    const none = await loginAs('nolinked', memberships(['dashboard'], ['dashboard']), loans);
+    assert.equal((await none.get('/api/loans')).status === 200 ? (await none.get('/api/loans')).body.length : 0, 0);
+    assert.equal((await none.get(`/api/loans/${shared.id}`)).status, 403);
+    // Validation and cleanup.
+    assert.equal((await ctx.api.put(`/api/loans/${shared.id}`).send({ extraLedgerIds: [BOOK] })).status, 400);
+    assert.equal((await ctx.api.post('/api/loans').send({ name: 'X', borrower: 'A', lender: 'B', extraLedgerIds: ['personal'] })).status, 400);
+    assert.equal((await ctx.api.put(`/api/loans/${shared.id}`).send({ extraLedgerIds: [] })).body.ledgerIds.length, 1);
+    await ctx.api.put(`/api/loans/${shared.id}`).send({ extraLedgerIds: ['personal'] }).expect(200);
+    await ctx.api.delete(`/api/loans/${shared.id}`).expect(200);
+    assert.equal((await ctx.d1.prepare('SELECT COUNT(*) AS n FROM loan_register_ledgers WHERE register_id = ?').bind(shared.id).first()).n, 0);
+  });
+
+  it('moving a loan to another main ledger needs the Admin role in both ledgers (super admin always)', async () => {
+    const reg = (await ctx.api.post('/api/loans').send({ name: 'Mover', borrower: 'A', lender: 'B', bookId: BOOK })).body;
+    const loans = [{ registerId: reg.id, role: 'admin' }];
+    const editor = await loginAs('mveditor', [{ bookId: BOOK, role: 'editor', resources: ['loans'] }, { bookId: 'personal', role: 'admin', resources: ['loans'] }], loans);
+    assert.equal((await editor.put(`/api/loans/${reg.id}`).send({ bookId: 'personal' })).status, 403); // only Editor in the source
+    const target = await loginAs('mvtarget', [{ bookId: BOOK, role: 'admin', resources: ['loans'] }, { bookId: 'personal', role: 'editor', resources: ['loans'] }], loans);
+    assert.equal((await target.put(`/api/loans/${reg.id}`).send({ bookId: 'personal' })).status, 403); // only Editor in the target
+    const both = await loginAs('mvboth', [{ bookId: BOOK, role: 'admin', resources: ['loans'] }, { bookId: 'personal', role: 'admin', resources: ['loans'] }], loans);
+    assert.equal((await both.put(`/api/loans/${reg.id}`).send({ bookId: 'personal' })).status, 200);
+    assert.equal((await ctx.api.put(`/api/loans/${reg.id}`).send({ bookId: BOOK })).status, 200); // a super admin can always
+    assert.equal((await both.put(`/api/loans/${reg.id}`).send({ name: 'Renamed' })).status, 200); // other edits are unchanged
+  });
+
+  it('a loan shows who created it, by name', async () => {
+    const mine = (await ctx.api.post('/api/loans').send({ name: 'Who', borrower: 'A', lender: 'B' })).body;
+    assert.equal(mine.createdByName, 'Tester');
+    assert.equal((await ctx.api.get('/api/loans')).body.find(r => r.id === mine.id).createdByName, 'Tester');
+    assert.equal((await ctx.api.get(`/api/loans/${mine.id}`)).body.createdByName, 'Tester');
+  });
+
   it('the Notebook: needs the page in that ledger, never lets a notebook into a ledger without it, and codes only read', async () => {
     // Notebook page on in the first ledger only.
     const api = await loginAs('writer', [{ bookId: BOOK, role: 'editor', resources: ['diary'] }, { bookId: 'personal', role: 'editor', resources: ['ledger'] }]);
@@ -176,6 +217,43 @@ describe('page resources', () => {
     const blocked = await sign(without.code, '10.8.8.2');
     assert.equal((await blocked.get('/api/diary/notebooks')).status, 403);
     assert.equal((await blocked.get(`/api/diary/notebooks/${made.body.id}/entries`)).status, 403);
+  });
+
+  it('Notebook: an admin can be left out of some notebooks, and a code inherits that and can narrow further', async () => {
+    const nb = async name => (await ctx.api.post('/api/diary/notebooks').send({ name, bookId: BOOK })).body;
+    const [a, b, c] = [await nb('Alpha'), await nb('Beta'), await nb('Gamma')];
+    const names = async api => (await api.get('/api/diary/notebooks')).body.map(n => n.name).sort();
+    // Admin left out of Beta.
+    const made = await ctx.api.post('/api/admin/accounts').send({
+      username: 'nbadmin', name: 'N', password: PASSWORD,
+      memberships: [{ bookId: BOOK, role: 'editor', resources: ['diary', 'ledger'], notebooksExcluded: [b.id] }]
+    });
+    assert.equal(made.status, 201);
+    const admin = withCookie(ctx.app, `lsid=${(await ctx.auth.login('nbadmin', PASSWORD)).sid}`);
+    assert.deepEqual(await names(admin), ['Alpha', 'Gamma']);
+    assert.equal((await admin.get(`/api/diary/notebooks/${b.id}/entries`)).status, 404);
+    assert.equal((await admin.put(`/api/diary/notebooks/${b.id}`).send({ name: 'x' })).status, 404);
+    assert.equal((await admin.get(`/api/diary/notebooks/${a.id}/entries`)).status, 200);
+    const sign = async (code, ip) => withCookie(ctx.app, (await request(ctx.app).post('/api/auth/access-code').set('cf-connecting-ip', ip).send({ code })).headers['set-cookie'][0].split(';')[0]);
+    // A code inherits the admin's exclusion ...
+    const inherit = (await ctx.api.post('/api/admin/access-codes').send({ name: 'Inherit', bookIds: [BOOK], accountId: made.body.account.id })).body.accessCode;
+    assert.deepEqual(await names(await sign(inherit.code, '10.7.7.1')), ['Alpha', 'Gamma']);
+    // ... and can also be limited to one notebook ("only"), or leave one more out ("exclude").
+    const only = await ctx.api.post('/api/admin/access-codes').send({ name: 'Only', bookIds: [BOOK], accountId: made.body.account.id, notebookRules: { [BOOK]: { only: [a.id, b.id] } } });
+    assert.equal(only.status, 201);
+    assert.deepEqual(await names(await sign(only.body.accessCode.code, '10.7.7.2')), ['Alpha']); // Beta is left out by the admin
+    const less = (await ctx.api.post('/api/admin/access-codes').send({ name: 'Less', bookIds: [BOOK], accountId: made.body.account.id, notebookRules: { [BOOK]: { exclude: [a.id] } } })).body.accessCode;
+    assert.deepEqual(await names(await sign(less.code, '10.7.7.3')), ['Gamma']);
+    // Rules survive in the code view and can be changed; an empty rule means no limit.
+    const edited = await ctx.api.put(`/api/admin/access-codes/${less.id}/resources`).send({ resources: ['diary'], notebookRules: { [BOOK]: { exclude: [] } } });
+    assert.equal(edited.status, 200);
+    assert.deepEqual(edited.body.accessCode.notebookRules, {});
+    assert.deepEqual(await names(await sign(less.code, '10.7.7.4')), ['Alpha', 'Gamma']);
+    // A super administrator is never limited; the admin screens can list a ledger's notebooks (names only).
+    assert.equal((await ctx.api.get('/api/diary/notebooks')).body.length >= 3, true);
+    assert.deepEqual((await ctx.api.get(`/api/diary/ledger-notebooks?bookId=${BOOK}`)).body.map(n => n.name), ['Alpha', 'Beta', 'Gamma']);
+    assert.equal((await admin.get(`/api/diary/ledger-notebooks?bookId=${BOOK}`)).status, 403); // an editor cannot
+    void c;
   });
 
   it('a default access code reaches only dashboard, ledger, reports and items', async () => {

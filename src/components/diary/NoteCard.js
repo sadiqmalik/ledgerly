@@ -1,3 +1,4 @@
+import { StampFooter } from '../common/Stamp';
 import React from 'react';
 import { btnSecondary, btnDanger } from '../settings/ui';
 import { RichText } from './RichText';
@@ -25,7 +26,7 @@ export default function NoteCard({ note: n, canEdit, onEdit, onDuplicate, onTogg
         {n.toName && <span>For <span className="font-medium text-foreground">{n.toName}</span></span>}
       </div>
       {n.message && <RichText text={n.message} className="mt-2 text-sm" />}
-      <p className="mt-auto pt-2 text-xs text-muted-foreground">{stampText(n.createdAt, n.updatedAt)}</p>
+      <StampFooter createdAt={n.createdAt} updatedAt={n.updatedAt} />
       <div className="flex flex-wrap items-center gap-2 pt-2">
         {canEdit && (
           <span className="ml-auto flex items-center gap-2" onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>

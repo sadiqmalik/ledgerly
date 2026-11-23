@@ -349,6 +349,11 @@ If you kept your money in a spreadsheet, start by creating the funds and categor
 | Group dates and notes under a person or topic | Notebook | **New category**, or type a category in the entry |
 | See what is coming up | Notebook > Upcoming | the strip at the top |
 | Hide or bring back an entry | Notebook | **Disable** or **Enable** |
+| Share a notebook, loan or item with other ledgers | The form of the record | **Also share with** switches; only the main ledger can edit it |
+| Move a record to another main ledger | The form of the record | Change **Ledger** (Admin in both ledgers) |
+| See where a record is shared | Its card | The two-people badge, hover for details (loans in no ledger show **All**) |
+| Give an access code its own pages or notebooks | Settings > Access or Administration > Access | **Own pages**, **Only / All except** notebooks |
+| See a code again | Administration > Access (super admin) | **Show code** |
 | Rearrange the Dashboard | Dashboard | **Customize** |
 | Create a loan | Loans | **New loan** |
 | Add a loan taken | Loans > the loan | **Add entry**, then **Loan taken** |

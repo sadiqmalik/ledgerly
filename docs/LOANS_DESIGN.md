@@ -154,6 +154,10 @@ Problem: an access code signed in with a ledger viewer role but had no loan role
 | Audit | Each change writes a `loan-codes` entry (loan id and name, code ids; never a code secret). |
 | Tests | `test/api/loan-access-codes.test.js`. |
 
+## 7d. Loans shared with several ledgers (migration 0030)
+
+A loan keeps one main ledger (`book_id`) and can be shared with more ledgers (`loan_register_ledgers`; `extraLedgerIds` on write, `ledgerIds` in the JSON). Reading works through any of them where the person has a role and the Loans page. A loan linked to a ledger needs Editor or Admin in its main ledger, with the Loans page, for any write; elsewhere the JSON `role` is capped to viewer and `canWrite` is false. Loans linked to no ledger are unchanged (they show **All**). Moving the main ledger needs Admin in the ledger left and the ledger joined (super admin always); the new main is dropped from the list. Access-code sessions get no sharing details. Loans return `createdByName` ("Created by" on the card).
+
 ## 8. Not in scope (v1)
 
 Interest or due dates, attachments, per-entry permissions, delegated granting by register admins, multi-currency inside one register, a loans widget on the Dashboard.

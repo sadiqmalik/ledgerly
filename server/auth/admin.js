@@ -4,7 +4,7 @@ const { normalizeEmail, normalizeUsername, USERNAME_PATTERN, EMAIL_PATTERN } = r
 const { RESOURCES, effectiveResources, normalizeResources } = require('./resources');
 
 const ROLES = ['viewer', 'editor', 'admin'];
-const membership = z.object({ bookId: z.string().min(1).max(64), role: z.enum(ROLES), resources: z.array(z.enum(RESOURCES)).max(RESOURCES.length).optional() });
+const membership = z.object({ bookId: z.string().min(1).max(64), role: z.enum(ROLES), resources: z.array(z.enum(RESOURCES)).max(RESOURCES.length).optional(), notebooksExcluded: z.array(z.string().min(1).max(64)).max(500).optional() });
 
 const ident = a => a.email || a.username;
 

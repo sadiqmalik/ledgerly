@@ -109,4 +109,128 @@ describe('item tracker API', () => {
     assert.equal((await visitor.delete(`${U}/item-locations/${loc.body.id}`)).status, 403);
     assert.equal((await visitor.get('/api/books/personal/items')).status, 403);
   });
+
+  describe('items shared with more ledgers', () => {
+    const P = '/api/books/personal';
+    const mk = async (email, memberships) => {
+      await createAccountStore(ctx.repo.authStore).create({ email, name: email, password: 'a long passphrase here', memberships });
+      return withCookie(app, `lsid=${(await ctx.auth.login(email, 'a long passphrase here')).sid}`);
+    };
+
+    it('names only ledgers an access code can open', async () => {
+      await ctx.d1.prepare("INSERT INTO books (id, name, created_at) VALUES ('vault', 'Vault', ?)").bind(new Date().toISOString()).run();
+      const a = await ctx.api.post(`${U}/items`).send({ name: 'Main A', extraLedgerIds: ['personal'] });
+      const c = await ctx.api.post('/api/books/vault/items').send({ name: 'Main C', extraLedgerIds: [BOOK] });
+      assert.equal(a.status, 201); assert.equal(c.status, 201);
+      const made = await ctx.api.post('/api/admin/access-codes').send({ name: 'Board', bookIds: [BOOK, 'personal'], resources: ['items'] });
+      const res = await request(app).post('/api/auth/access-code').set('cf-connecting-ip', '10.7.9.9').send({ code: made.body.accessCode.code });
+      const code = withCookie(app, res.headers['set-cookie'][0].split(';')[0]);
+      const inA = (await code.get(`${U}/items`)).body;
+      assert.deepEqual(inA.map(x => x.name).sort(), ['Main A', 'Main C']);
+      const ia = inA.find(x => x.name === 'Main A'); const ic = inA.find(x => x.name === 'Main C');
+      assert.deepEqual(ia.ledgerIds, [BOOK, 'personal']); assert.equal(ia.mainLedgerId, BOOK);
+      assert.deepEqual(ic.ledgerIds, [BOOK]); assert.deepEqual(ic.ledgerNames, ['Family']);
+      assert.equal(ic.mainLedgerId, BOOK); assert.equal(ic.sharedFrom, null);
+      assert.ok(!JSON.stringify(inA).toLowerCase().includes('vault'));
+      assert.deepEqual((await code.get('/api/books/personal/items')).body.map(x => x.name), ['Main A']);
+      assert.equal((await ctx.api.get(`${U}/items`)).body.find(x => x.name === 'Main C').sharedFrom, 'Vault'); // normal account unchanged
+    });
+
+    it('lists, and refuses every edit and delete through the second ledger', async () => {
+      const both = await mk('both@example.com', [{ bookId: BOOK, role: 'editor' }, { bookId: 'personal', role: 'editor' }]);
+      const loc = await both.post(`${U}/item-locations`).send({ name: 'Garage', place: 'UK' });
+      const own = await both.post(`${U}/items`).send({ name: 'Plain' });
+      assert.deepEqual(own.body.ledgerIds, [BOOK]);
+      assert.equal(own.body.sharedFrom, null);
+      assert.deepEqual((await both.get(`${P}/items`)).body, []);
+
+      const it = await both.post(`${U}/items`).send({ name: 'Ladder', locationId: loc.body.id, extraLedgerIds: ['personal'] });
+      assert.equal(it.status, 201);
+      assert.deepEqual(it.body.ledgerIds, [BOOK, 'personal']);
+      assert.equal(it.body.mainLedgerId, BOOK);
+      assert.deepEqual(it.body.ledgerNames, ['Family', 'Personal']);
+      const there = (await both.get(`${P}/items`)).body;
+      assert.deepEqual(there.map(x => x.name), ['Ladder']);
+      assert.equal(there[0].sharedFrom, 'Family');
+      assert.equal(there[0].locationName, 'Garage');
+
+      const ed = await both.put(`${P}/items/${it.body.id}`).send({ name: 'Big ladder', comment: 'blue', owner: 'Me' });
+      assert.equal(ed.status, 409);
+      assert.match(ed.body.error, /shared from Family\. Edit it there/);
+      assert.equal((await both.get(`${U}/items`)).body.find(x => x.id === it.body.id).name, 'Ladder');
+      assert.equal((await both.put(`${P}/items/${it.body.id}`).send({ locationId: null })).status, 409);
+      assert.equal((await both.put(`${P}/items/${it.body.id}`).send({ extraLedgerIds: [] })).status, 409);
+      assert.equal((await both.delete(`${P}/items/${it.body.id}`)).status, 409);
+      assert.equal((await both.get(`${P}/items`)).body.length, 1);
+
+      // Remove the share, then add it back; deleting in the main ledger cleans the link rows.
+      assert.equal((await both.put(`${U}/items/${it.body.id}`).send({ extraLedgerIds: [] })).body.ledgerIds.length, 1);
+      assert.deepEqual((await both.get(`${P}/items`)).body, []);
+      assert.equal((await both.put(`${U}/items/${it.body.id}`).send({ extraLedgerIds: ['personal'] })).status, 200);
+      assert.equal((await both.put(`${U}/items/${it.body.id}`).send({ extraLedgerIds: [BOOK] })).status, 400);
+      assert.equal((await both.delete(`${U}/items/${it.body.id}`)).status, 200);
+      assert.equal((await ctx.d1.prepare('SELECT COUNT(*) AS n FROM item_ledgers').first()).n, 0);
+      assert.deepEqual((await both.get(`${P}/items`)).body, []);
+    });
+
+    it('moves an item to another ledger from its main ledger only', async () => {
+      const both = await mk('mv@example.com', [{ bookId: BOOK, role: 'admin' }, { bookId: 'personal', role: 'admin' }]);
+      const locA = await both.post(`${U}/item-locations`).send({ name: 'Garage' });
+      const locB = (await both.post(`${P}/item-locations`).send({ name: 'Flat' }));
+      const it = await both.post(`${U}/items`).send({ name: 'Bike', locationId: locA.body.id, extraLedgerIds: ['personal'] });
+      assert.equal((await both.put(`${U}/items/${it.body.id}`).send({ moveToLedgerId: BOOK })).status, 400);
+      assert.equal((await both.put(`${P}/items/${it.body.id}`).send({ moveToLedgerId: BOOK })).status, 409);
+      // A location of the old ledger is refused for the target.
+      assert.equal((await both.put(`${U}/items/${it.body.id}`).send({ moveToLedgerId: 'personal', locationId: locA.body.id })).status, 404);
+      const moved = await both.put(`${U}/items/${it.body.id}`).send({ moveToLedgerId: 'personal' });
+      assert.equal(moved.status, 200);
+      assert.equal(moved.body.mainLedgerId, 'personal');
+      assert.equal(moved.body.locationId, null);
+      assert.deepEqual(moved.body.ledgerIds, ['personal']);
+      assert.deepEqual((await both.get(`${U}/items`)).body.map(x => x.id).filter(x => x === it.body.id), []);
+      assert.equal((await both.put(`${U}/items/${it.body.id}`).send({ name: 'X' })).status, 404);
+
+      // Move back, keeping the old ledger as an extra and choosing a location in the target.
+      const loc2 = await both.post(`${U}/item-locations`).send({ name: 'Shed' });
+      const back = await both.put(`${P}/items/${it.body.id}`).send({ moveToLedgerId: BOOK, locationId: loc2.body.id, extraLedgerIds: ['personal'] });
+      assert.equal(back.status, 200);
+      assert.equal(back.body.locationId, loc2.body.id);
+      assert.deepEqual(back.body.ledgerIds, [BOOK, 'personal']);
+      assert.equal(locB.status, 201);
+    });
+
+    it('refuses a move without the role or the page in the target', async () => {
+      const noPage = await mk('mv2@example.com', [{ bookId: BOOK, role: 'admin' }, { bookId: 'personal', role: 'admin', resources: ['ledger'] }]);
+      const viewerThere = await mk('mv3@example.com', [{ bookId: BOOK, role: 'admin' }, { bookId: 'personal', role: 'editor' }]);
+      const viewerHere = await mk('mv4@example.com', [{ bookId: BOOK, role: 'editor' }, { bookId: 'personal', role: 'admin' }]);
+      const editors = await mk('mv5@example.com', [{ bookId: BOOK, role: 'editor' }, { bookId: 'personal', role: 'editor' }]);
+      const it = await editor.post(`${U}/items`).send({ name: 'Box' });
+      assert.equal((await noPage.put(`${U}/items/${it.body.id}`).send({ moveToLedgerId: 'personal' })).status, 403);
+      assert.equal((await viewerThere.put(`${U}/items/${it.body.id}`).send({ moveToLedgerId: 'personal' })).status, 403);
+      assert.equal((await viewerHere.put(`${U}/items/${it.body.id}`).send({ moveToLedgerId: 'personal' })).status, 403);
+      assert.equal((await editors.put(`${U}/items/${it.body.id}`).send({ moveToLedgerId: 'personal' })).status, 403);
+      assert.equal((await editor.get(`${U}/items`)).body.length, 1);
+      assert.equal((await ctx.api.put(`${U}/items/${it.body.id}`).send({ moveToLedgerId: 'personal' })).status, 200);
+    });
+
+    it('needs the role and the Item Vault page in the other ledger, and viewers cannot edit', async () => {
+      const noPage = await mk('nopage@example.com', [{ bookId: BOOK, role: 'editor' }, { bookId: 'personal', role: 'editor', resources: ['ledger'] }]);
+      assert.equal((await noPage.post(`${U}/items`).send({ name: 'A', extraLedgerIds: ['personal'] })).status, 403);
+      const viewerElsewhere = await mk('ve@example.com', [{ bookId: BOOK, role: 'editor' }, { bookId: 'personal', role: 'viewer' }]);
+      assert.equal((await viewerElsewhere.post(`${U}/items`).send({ name: 'A', extraLedgerIds: ['personal'] })).status, 403);
+      assert.equal((await editor.post(`${U}/items`).send({ name: 'A', extraLedgerIds: ['nope'] })).status, 403);
+
+      const both = await mk('both2@example.com', [{ bookId: BOOK, role: 'editor' }, { bookId: 'personal', role: 'editor' }]);
+      const it = await both.post(`${U}/items`).send({ name: 'Shared', extraLedgerIds: ['personal'] });
+      const viewerBoth = await mk('vb@example.com', [{ bookId: BOOK, role: 'viewer' }, { bookId: 'personal', role: 'viewer' }]);
+      assert.equal((await viewerBoth.get(`${P}/items`)).body[0].name, 'Shared');
+      assert.equal((await viewerBoth.put(`${P}/items/${it.body.id}`).send({ name: 'X' })).status, 403);
+      assert.equal((await viewerBoth.put(`${U}/items/${it.body.id}`).send({ name: 'X' })).status, 403);
+      // A person with no Item Vault page in the second ledger does not see the shared item there.
+      const noVault = await mk('nv@example.com', [{ bookId: 'personal', role: 'editor', resources: ['ledger'] }]);
+      assert.equal((await noVault.get(`${P}/items`)).status, 403);
+      // Not reachable through an unrelated ledger id.
+      assert.equal((await both.put(`/api/books/zzz/items/${it.body.id}`).send({ name: 'X' })).status, 403);
+    });
+  });
 });

@@ -39,18 +39,27 @@ const normalizeCode = input => {
 const hashCode = normalized => crypto.createHash('sha256').update(`access-code:${normalized}`).digest('hex');
 const hashKey = value => crypto.createHash('sha256').update(String(value)).digest('hex').slice(0, 32);
 
+const idList = z.array(z.string().min(1).max(64)).max(500);
+const notebookRules = z.record(z.string().min(1).max(64), z.object({ only: idList.optional(), exclude: idList.optional() }).strict());
+// Only the code's own ledgers keep a rule; an empty rule means no restriction and is dropped.
+const cleanNotebookRules = (map, bookIds) => Object.fromEntries(Object.entries(map || {})
+  .filter(([id, r]) => bookIds.includes(id) && (Array.isArray(r.only) || (r.exclude && r.exclude.length)))
+  .map(([id, r]) => [id, { ...(Array.isArray(r.only) ? { only: [...new Set(r.only)] } : {}), ...(r.exclude && r.exclude.length ? { exclude: [...new Set(r.exclude)] } : {}) }]));
+
 const createSchema = z.object({
   name: z.string().trim().min(1).max(80),
   code: z.string().max(200).optional(),
   bookIds: z.array(z.string().min(1).max(64)).min(1).max(50),
   accountId: z.string().min(1).max(64).optional(),
   resources: z.array(z.enum(RESOURCES)).max(RESOURCES.length).optional(),
-  bookResources: z.record(z.string().min(1).max(64), z.array(z.enum(RESOURCES)).max(RESOURCES.length)).optional()
+  bookResources: z.record(z.string().min(1).max(64), z.array(z.enum(RESOURCES)).max(RESOURCES.length)).optional(),
+  notebookRules: notebookRules.optional()
 });
 
 const resourcesSchema = z.object({
   resources: z.array(z.enum(RESOURCES)).max(RESOURCES.length),
   bookResources: z.record(z.string().min(1).max(64), z.array(z.enum(RESOURCES)).max(RESOURCES.length)).optional(),
+  notebookRules: notebookRules.optional(),
   bookIds: z.array(z.string().min(1).max(64)).min(1).max(50).optional(),
   accountId: z.string().min(1).max(64).optional()
 }).strict();
@@ -113,7 +122,7 @@ const principalFor = (code, loanIds = [], owner = null) => owner ? ownedPrincipa
   isSuperAdmin: false,
   accessCode: true,
   resources: normalizeResources(code.resources),
-  memberships: code.bookIds.map(bookId => ({ bookId, role: 'viewer', ...(code.bookResources?.[bookId] ? { resources: normalizeResources(code.bookResources[bookId]) } : {}) })),
+  memberships: code.bookIds.map(bookId => ({ bookId, role: 'viewer', ...(code.notebookRules?.[bookId] ? { notebooks: code.notebookRules[bookId] } : {}), ...(code.bookResources?.[bookId] ? { resources: normalizeResources(code.bookResources[bookId]) } : {}) })),
   loanMemberships: loanIds.map(registerId => ({ registerId, role: 'viewer' }))
 });
 
@@ -121,7 +130,12 @@ const ownedPrincipal = (code, loanIds, owner) => {
   const memberships = code.bookIds.filter(id => ownerHasBook(owner, id)).map(bookId => {
     const ceiling = ownerPagesIn(owner, bookId);
     const own = code.bookResources?.[bookId];
-    return { bookId, role: 'viewer', resources: normalizeResources(Array.isArray(own) ? own.filter(k => ceiling.includes(k)) : ceiling) };
+    // Notebooks: what the owner is left out of, plus the code's own rule ("only" these, or all except these).
+    const rule = code.notebookRules?.[bookId];
+    const ownerRule = owner.isSuperAdmin ? null : (owner.memberships || []).find(x => x.bookId === bookId)?.notebooksExcluded;
+    const exclude = [...new Set([...(ownerRule || []), ...(rule?.exclude || [])])];
+    const notebooks = exclude.length || rule?.only ? { ...(rule?.only ? { only: rule.only } : {}), ...(exclude.length ? { exclude } : {}) } : null;
+    return { bookId, role: 'viewer', ...(notebooks ? { notebooks } : {}), resources: normalizeResources(Array.isArray(own) ? own.filter(k => ceiling.includes(k)) : ceiling) };
   });
   return {
     id: `code:${code.id}`,
@@ -144,6 +158,7 @@ const toView = code => ({
   bookIds: code.bookIds,
   resources: normalizeResources(code.resources),
   bookResources: cleanBookResources(code.bookResources, code.bookIds),
+  notebookRules: cleanNotebookRules(code.notebookRules, code.bookIds),
   createdBy: code.createdBy,
   createdAt: code.createdAt,
   lastUsedAt: code.lastUsedAt,
@@ -242,7 +257,7 @@ const createAccessCodeService = (store, { codeKey = '' } = {}) => {
       let saved;
       try {
         saved = await store.accessCodes.insert({
-          name: data.name, codeHash, bookIds, resources, bookResources, accountId: data.accountId ?? null, codeSecret: await sealCode(code), createdBy: actor.email, createdAt: now
+          name: data.name, codeHash, bookIds, resources, bookResources, notebookRules: cleanNotebookRules(data.notebookRules, bookIds), accountId: data.accountId ?? null, codeSecret: await sealCode(code), createdBy: actor.email, createdAt: now
         });
       } catch (error) {
         if (isUnique(error)) throw inUse;
@@ -318,7 +333,7 @@ const createAccessCodeService = (store, { codeKey = '' } = {}) => {
       }
       const accountId = data.accountId ?? existing.accountId ?? null;
       if (accountId) await checkOwner(accountId, bookIds);
-      await store.accessCodes.setResources(existing.id, resources, bookResources, bookIds);
+      await store.accessCodes.setResources(existing.id, resources, bookResources, bookIds, data.notebookRules === undefined ? undefined : cleanNotebookRules(data.notebookRules, bookIds));
       if (accountId !== (existing.accountId ?? null)) await store.accessCodes.setOwner(existing.id, accountId);
       await store.log.insert({
         actor: { id: actor.id, email: actor.email }, action: 'code-resources', target: `code:${existing.id}`,

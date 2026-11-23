@@ -211,6 +211,7 @@ export default function ProjectDetail({ id }) {
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
+          {canEdit && !closed && <button type="button" className={btnPrimary} onClick={() => setEntryDlg({ entry: null })}>Add entry</button>}
           <a href={`#/ledger?project=${encodeURIComponent(project.id)}&year=all`} className={btnSecondary}>View in Ledger</a>
         {canEdit && (<>
             <button type="button" className={btnSecondary} onClick={() => setEditing(true)}>Edit</button>
@@ -279,7 +280,6 @@ export default function ProjectDetail({ id }) {
       )}
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold text-foreground">Entries</h3>
-        {canEdit && !closed && <button type="button" className={btnPrimary} onClick={() => setEntryDlg({ entry: null })}>Add entry</button>}
         {canEdit && closed && <span className="text-sm text-muted-foreground">This project is closed. Reopen it to add or move entries into it.</span>}
       </div>
       {!!entries.length && (

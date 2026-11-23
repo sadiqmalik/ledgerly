@@ -10,6 +10,12 @@ export const btnSecondary =
   'rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-foreground hover:bg-muted disabled:opacity-50';
 export const btnDanger =
   'rounded-md border border-negative px-3 py-2 text-sm font-medium text-negative hover:bg-muted disabled:opacity-50';
+export const btnSm =
+  'rounded-md border border-border bg-card px-2.5 py-1 text-xs font-medium text-foreground hover:bg-muted disabled:opacity-50';
+export const btnSmPrimary =
+  'rounded-md bg-accent px-2.5 py-1 text-xs font-medium text-accent-foreground disabled:opacity-50';
+export const btnSmDanger =
+  'rounded-md border border-negative px-2.5 py-1 text-xs font-medium text-negative hover:bg-muted disabled:opacity-50';
 
 export function errorText(err) {
   return err?.response?.data?.error || err?.message || 'Something went wrong';
@@ -51,16 +57,16 @@ export function Field({ label, children }) {
 // On/off switch with a hint line. Used where a checkbox reads badly as a sentence.
 // tone 'neutral' uses the text colour for the on state instead of the accent, so a group of small switches (pages)
 // reads differently from the switch above it (a ledger's Access).
-export function Toggle({ label, hint, checked, onChange, disabled, compact = false, tone = 'accent' }) {
+export function Toggle({ label, hint, checked, onChange, disabled, compact = false, tone = 'accent', ariaLabel }) {
   const on = tone === 'neutral' ? 'peer-checked:bg-foreground' : 'peer-checked:bg-[var(--accent)]';
   const knob = tone === 'neutral' ? 'after:bg-background' : 'after:bg-white';
   if (compact) {
     // Small inline switch for list headers: no box, label beside the switch.
     return (
       <label className={`inline-flex items-center gap-2 text-sm text-muted-foreground ${disabled ? 'opacity-60' : 'cursor-pointer'}`}>
-        <input type="checkbox" role="switch" className="sr-only peer" checked={checked} disabled={disabled} onChange={e => onChange(e.target.checked)} />
+        <input type="checkbox" role="switch" aria-label={ariaLabel} className="sr-only peer" checked={checked} disabled={disabled} onChange={e => onChange(e.target.checked)} />
         <span aria-hidden="true" className={`relative h-5 w-9 shrink-0 rounded-full bg-border transition-colors ${on} peer-focus-visible:ring-2 peer-focus-visible:ring-accent after:absolute after:left-0.5 after:top-0.5 after:size-4 after:rounded-full ${knob} after:shadow after:transition-transform peer-checked:after:translate-x-4`} />
-        <span>{label}</span>
+        {label && <span>{label}</span>}
       </label>
     );
   }

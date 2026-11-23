@@ -67,6 +67,17 @@ describe('loan registers', () => {
     assert.equal((await ctx.api.get(`/api/loans/${made.id}/entries`)).body.register.bookId, null);
   });
 
+  it('moving the main ledger drops it from the extra ledgers and keeps the old one only when chosen', async () => {
+    await ctx.repo.books.create({ id: 'tmp_move_book', name: 'Move', baseCurrency: 'PKR', createdAt: new Date().toISOString() });
+    const made = (await ctx.api.post('/api/loans').send(body({ name: 'Mover', bookId: BOOK, extraLedgerIds: ['tmp_move_book'] })).expect(201)).body;
+    const moved = (await ctx.api.put(`/api/loans/${made.id}`).send({ bookId: 'tmp_move_book', extraLedgerIds: ['tmp_move_book'] }).expect(200)).body;
+    assert.equal(moved.bookId, 'tmp_move_book');
+    assert.deepEqual(moved.ledgerIds, ['tmp_move_book']);
+    const kept = (await ctx.api.put(`/api/loans/${made.id}`).send({ bookId: BOOK, extraLedgerIds: ['tmp_move_book'] }).expect(200)).body;
+    assert.deepEqual(kept.ledgerIds, [BOOK, 'tmp_move_book']);
+    await ctx.repo.books.remove('tmp_move_book');
+  });
+
   it('validates registers and entries', async () => {
     await ctx.api.post('/api/loans').send(body({ name: '' })).expect(400);
     await ctx.api.post('/api/loans').send(body({ currency: 'PK' })).expect(400);
@@ -228,5 +239,60 @@ describe('loan registers', () => {
     assert.equal((await ctx.api.get('/api/books')).status, 200);
     assert.equal((await ctx.api.get('/api/books/family/summary')).status, 200);
     assert.equal((await actors.nopage.get('/api/books/family/summary')).status, 403);
+  });
+});
+
+describe('loan writes follow the main ledger', () => {
+  let ctx; let linked; let unlinked;
+  const actors = {};
+  const mk = async (key, memberships, role = 'editor', registerId = null) => {
+    await createAccountStore(ctx.repo.authStore).create({
+      email: `${key}@example.com`, name: key, password: PASS, memberships,
+      loanMemberships: registerId ? [{ registerId, role }] : []
+    });
+    const { sid } = await ctx.auth.login(`${key}@example.com`, PASS);
+    actors[key] = withCookie(ctx.app, `lsid=${sid}`);
+  };
+  before(async () => {
+    ctx = await makeContext();
+    await ctx.repo.books.create({ id: 'main_book', name: 'Main', baseCurrency: 'PKR', createdAt: new Date().toISOString() });
+    await ctx.repo.books.create({ id: 'shared_book', name: 'Shared', baseCurrency: 'PKR', createdAt: new Date().toISOString() });
+    linked = (await ctx.api.post('/api/loans').send(body({ name: 'Linked', bookId: 'main_book', extraLedgerIds: ['shared_book'] })).expect(201)).body;
+    unlinked = (await ctx.api.post('/api/loans').send(body({ name: 'Unlinked' })).expect(201)).body;
+    await mk('sharedonly', [{ bookId: 'shared_book', role: 'admin' }], 'admin', linked.id);
+    await mk('mainviewer', [{ bookId: 'main_book', role: 'viewer' }], 'admin', linked.id);
+    await mk('maineditor', [{ bookId: 'main_book', role: 'editor' }], 'editor', linked.id);
+    await mk('nounlinked', [], 'editor', unlinked.id);
+  });
+  after(async () => { await ctx.close(); });
+
+  it('a loan editor who only reaches it through a shared-in ledger is read-only', async () => {
+    const a = actors.sharedonly;
+    const read = await a.get(`/api/loans/${linked.id}/entries`).expect(200);
+    assert.equal(read.body.register.role, 'viewer');
+    assert.equal(read.body.register.canWrite, false);
+    assert.equal((await a.post(`/api/loans/${linked.id}/entries`).send(entry())).status, 403);
+    assert.equal((await a.put(`/api/loans/${linked.id}`).send({ name: 'X' })).status, 403);
+    assert.equal((await a.put(`/api/loans/${linked.id}`).send({ extraLedgerIds: [] })).status, 403);
+    assert.equal((await a.delete(`/api/loans/${linked.id}`)).status, 403);
+    assert.equal((await a.put(`/api/loans/${linked.id}/access-codes`).send({ codeIds: [] })).status, 403);
+  });
+
+  it('a Viewer in the main ledger is read-only too', async () => {
+    const a = actors.mainviewer;
+    assert.equal((await a.get(`/api/loans/${linked.id}`).expect(200)).body.role, 'viewer');
+    assert.equal((await a.post(`/api/loans/${linked.id}/entries`).send(entry())).status, 403);
+  });
+
+  it('an Editor in the main ledger with the loan editor role can write entries', async () => {
+    const a = actors.maineditor;
+    assert.equal((await a.get(`/api/loans/${linked.id}`).expect(200)).body.role, 'editor');
+    await a.post(`/api/loans/${linked.id}/entries`).send(entry()).expect(201);
+  });
+
+  it('an unlinked loan keeps the plain loan-role rules', async () => {
+    const a = actors.nounlinked;
+    assert.equal((await a.get(`/api/loans/${unlinked.id}`).expect(200)).body.canWrite, true);
+    await a.post(`/api/loans/${unlinked.id}/entries`).send(entry()).expect(201);
   });
 });

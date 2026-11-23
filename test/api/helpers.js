@@ -11,7 +11,8 @@ const TESTER = { email: 'tester@example.com', name: 'Tester', password: 'test pa
 
 // Local D1 persisted under .wrangler/state-test (npm test migrates it first).
 // getPlatformProxy's persist.path is the directory that holds the d1 folder itself, so the proxy points at <dir>/v3.
-const D1_STATE = '.wrangler/state-test/v3';
+// LEDGER_TEST_STATE lets parallel runs use their own database folder (npx wrangler d1 migrations apply ledger --local --persist-to <dir>).
+const D1_STATE = `${process.env.LEDGER_TEST_STATE || '.wrangler/state-test'}/v3`;
 
 const withCookie = (app, cookie) => ({
   get: url => request(app).get(url).set('Cookie', cookie),

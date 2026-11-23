@@ -9,11 +9,12 @@ import { Details, Members, DefaultLedger } from '../settings/LedgerTab';
 import AccessCodesPanel from './AccessCodesPanel';
 import CurrenciesPanel from './CurrenciesPanel';
 import { BookPages, pagesText } from './ResourcePicker';
+import NotebookPicker from './NotebookPicker';
 import { DEFAULT_ALL_RESOURCES, RESOURCES } from '../../auth/resources.mjs';
-import { errorText, inputCls, btnPrimary, btnSecondary, btnDanger, Badge, Toggle } from '../settings/ui';
+import { errorText, inputCls, btnPrimary, btnSecondary, btnDanger, btnSm, btnSmDanger, btnSmPrimary, Badge, Toggle } from '../settings/ui';
 import CurrencyLabel from '../common/CurrencyLabel';
 import Select from '../common/Select';
-import Stamp from '../common/Stamp';
+import { StampFooter } from '../common/Stamp';
 import useHiddenLedgers from '../../hooks/useHiddenLedgers';
 import useHashQuery from '../../hooks/useHashQuery';
 import { groupSlug, resolveGroup } from '../../utils/groupSlug';
@@ -102,16 +103,23 @@ const accessFrom = (books, memberships = []) => Object.fromEntries(
 );
 
 // Every ledger carries its own page list: bookPages[bookId] when edited, else the seed (the account's usual pages).
-const membershipsFrom = (access, bookPages = {}, seed = []) => Object.entries(access)
+const membershipsFrom = (access, bookPages = {}, seed = [], notebookOff = {}) => Object.entries(access)
   .filter(([, role]) => role !== 'none')
   // Settings only goes with the Admin role in that ledger.
-  .map(([bookId, role]) => ({ bookId, role, resources: (Array.isArray(bookPages[bookId]) ? bookPages[bookId] : seed).filter(k => role === 'admin' || k !== 'settings') }));
+  .map(([bookId, role]) => {
+    const resources = (Array.isArray(bookPages[bookId]) ? bookPages[bookId] : seed).filter(k => role === 'admin' || k !== 'settings');
+    const off = resources.includes('diary') ? notebookOff[bookId] : null;
+    return { bookId, role, resources, ...(off && off.length ? { notebooksExcluded: off } : {}) };
+  });
+const notebookOffFrom = (memberships = []) => Object.fromEntries(
+  memberships.filter(m => Array.isArray(m.notebooksExcluded) && m.notebooksExcluded.length).map(m => [m.bookId, m.notebooksExcluded])
+);
 const pagesFromMemberships = (memberships = []) => Object.fromEntries(
   memberships.filter(m => Array.isArray(m.resources)).map(m => [m.bookId, m.resources])
 );
 
 // Shared list of ledger roles: one select per ledger.
-function AccessEditor({ books, access, onChange, disabled, bookPages, onBookPagesChange, globalPages = [] }) {
+function AccessEditor({ books, access, onChange, disabled, bookPages, onBookPagesChange, globalPages = [], notebookOff = {}, onNotebookOffChange }) {
   if (books.length === 0) return <p className="text-sm text-muted-foreground">There are no ledgers yet. Create one first.</p>;
   return (
     <div className="grid items-start gap-3 grid-cols-[repeat(auto-fill,minmax(min(100%,22rem),1fr))]">
@@ -133,6 +141,10 @@ function AccessEditor({ books, access, onChange, disabled, bookPages, onBookPage
           <BookPages bookName={b.name} value={(bookPages?.[b.id] ?? globalPages).filter(k => access[b.id] === 'admin' || k !== 'settings')} disabled={disabled}
             allowed={access[b.id] === 'admin' ? null : RESOURCES.filter(k => k !== 'settings')}
             onChange={v => onBookPagesChange({ ...bookPages, [b.id]: v })} />
+        )}
+        {onNotebookOffChange && (access[b.id] || 'none') !== 'none' && (bookPages?.[b.id] ?? globalPages).filter(k => access[b.id] === 'admin' || k !== 'settings').includes('diary') && (
+          <NotebookPicker bookId={b.id} excluded={notebookOff[b.id] || []} disabled={disabled}
+            onChange={v => onNotebookOffChange({ ...notebookOff, [b.id]: v })} />
         )}
         </div>
       ))}
@@ -234,9 +246,9 @@ function UsersPanel({ onOpenCodes }) {
       {!accounts && !error && <p className="text-sm text-muted-foreground">Loading admins...</p>}
 
       {accounts && (
-        <ul className="grid items-start gap-3 grid-cols-[repeat(auto-fill,minmax(min(100%,24rem),1fr))]" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+        <ul className="grid items-stretch gap-3 grid-cols-[repeat(auto-fill,minmax(min(100%,24rem),1fr))]" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
           {accounts.map(a => (
-            <li key={a.id}>
+            <li key={a.id} className="flex">
               <UserCard
                 account={a}
                 books={books}
@@ -265,6 +277,7 @@ function AddUserForm({ books, registers, onCancel, onDone }) {
   const [password, setPassword] = useState('');
   const [access, setAccess] = useState(() => accessFrom(books, []));
   const [bookPages, setBookPages] = useState({});
+  const [notebookOff, setNotebookOff] = useState({});
   const [loanAccess, setLoanAccess] = useState(() => loanAccessFrom(registers, []));
   const [isSuper, setIsSuper] = useState(false);
   const [pages, setPages] = useState([...DEFAULT_ALL_RESOURCES]); // the Notebook is off until you switch it on
@@ -277,7 +290,7 @@ function AddUserForm({ books, registers, onCancel, onDone }) {
     setBusy(true);
     setError('');
     try {
-      await api.post('/admin/accounts', { username: username.trim(), email: email.trim(), name: name.trim(), password, isSuperAdmin: isSuper, ...(isSuper ? {} : { memberships: membershipsFrom(access, bookPages, pages), loanMemberships: loanMembershipsFrom(loanAccess), resources: Object.keys(loanAccess).some(k => loanAccess[k] !== 'none') ? ['loans'] : [] }) });
+      await api.post('/admin/accounts', { username: username.trim(), email: email.trim(), name: name.trim(), password, isSuperAdmin: isSuper, ...(isSuper ? {} : { memberships: membershipsFrom(access, bookPages, pages, notebookOff), loanMemberships: loanMembershipsFrom(loanAccess), resources: Object.keys(loanAccess).some(k => loanAccess[k] !== 'none') ? ['loans'] : [] }) });
       onDone(`${username.trim() || email.trim()} was added. Give them the password in person; they can change it after signing in.`);
     } catch (err) {
       setError(errorText(err));
@@ -312,7 +325,7 @@ function AddUserForm({ books, registers, onCancel, onDone }) {
         <>
           <div className="space-y-2">
             <p className="text-sm font-medium text-foreground">Ledgers this admin can use (and their role in each)</p>
-            <AccessEditor books={books} access={access} onChange={setAccess} disabled={busy} bookPages={bookPages} onBookPagesChange={setBookPages} globalPages={pages} />
+            <AccessEditor books={books} access={access} onChange={setAccess} disabled={busy} bookPages={bookPages} onBookPagesChange={setBookPages} globalPages={pages} notebookOff={notebookOff} onNotebookOffChange={setNotebookOff} />
           </div>
 
           <div className="space-y-2">
@@ -336,6 +349,7 @@ function UserCard({ account: a, books, registers, codes = [], unlinkedCodes = []
   const [mode, setMode] = useState(null); // null | 'access' | 'loans' | 'pages' | 'profile' | 'password' | 'delete'
   const [access, setAccess] = useState({});
   const [bookPages, setBookPages] = useState({});
+  const [notebookOff, setNotebookOff] = useState({});
   const [loanAccess, setLoanAccess] = useState({});
   const [password, setPassword] = useState('');
   const [confirmEmail, setConfirmEmail] = useState('');
@@ -362,10 +376,10 @@ function UserCard({ account: a, books, registers, codes = [], unlinkedCodes = []
     }
   };
 
-  const startAccess = () => { setAccess(accessFrom(books, a.memberships)); setBookPages(pagesFromMemberships(a.memberships)); setLocalError(''); setMode('access'); };
+  const startAccess = () => { setAccess(accessFrom(books, a.memberships)); setBookPages(pagesFromMemberships(a.memberships)); setNotebookOff(notebookOffFrom(a.memberships)); setLocalError(''); setMode('access'); };
 
   const saveAccess = () => run(
-    () => api.put(`/admin/accounts/${a.id}/memberships`, { memberships: membershipsFrom(access, bookPages, a.resources || []) }),
+    () => api.put(`/admin/accounts/${a.id}/memberships`, { memberships: membershipsFrom(access, bookPages, a.resources || [], notebookOff) }),
     `Access for ${a.username} saved.`
   );
 
@@ -418,7 +432,7 @@ function UserCard({ account: a, books, registers, codes = [], unlinkedCodes = []
   const locked = a.lockedUntil && new Date(a.lockedUntil) > new Date();
 
   return (
-    <article className="flex h-full min-w-0 flex-col gap-3 rounded-xl border border-border bg-card p-4">
+    <article className="flex h-full min-w-0 flex-1 flex-col gap-3 rounded-xl border border-border bg-card p-4">
       <header className="flex min-w-0 items-start gap-3">
         <span aria-hidden="true" className="grid size-10 shrink-0 place-items-center rounded-full bg-muted text-sm font-semibold text-foreground">
           {(a.name || a.username).slice(0, 1).toUpperCase()}
@@ -504,8 +518,6 @@ function UserCard({ account: a, books, registers, codes = [], unlinkedCodes = []
         </div>
       )}
 
-      {a.lastLoginAt && mode !== 'access' && <p className="text-xs text-muted-foreground">Last sign-in: {new Date(a.lastLoginAt).toLocaleString()}</p>}
-
       {mode === 'loans' && (
         <div className="space-y-3 rounded-lg bg-muted p-3">
           <p className="text-sm font-medium text-foreground">Loan access for {a.email}</p>
@@ -520,7 +532,7 @@ function UserCard({ account: a, books, registers, codes = [], unlinkedCodes = []
       {mode === 'access' && (
         <div className="space-y-3 rounded-lg bg-muted p-3">
           <p className="text-sm font-medium text-foreground">Access for {a.email}</p>
-          <AccessEditor books={books} access={access} onChange={setAccess} disabled={busy} bookPages={bookPages} onBookPagesChange={setBookPages} globalPages={a.resources || []} />
+          <AccessEditor books={books} access={access} onChange={setAccess} disabled={busy} bookPages={bookPages} onBookPagesChange={setBookPages} globalPages={a.resources || []} notebookOff={notebookOff} onNotebookOffChange={setNotebookOff} />
           <div className="flex flex-wrap gap-2">
             <button type="button" className={btnPrimary} disabled={busy} onClick={saveAccess}>{busy ? 'Saving...' : 'Save access'}</button>
             <button type="button" className={btnSecondary} disabled={busy} onClick={() => setMode(null)}>Cancel</button>
@@ -529,18 +541,18 @@ function UserCard({ account: a, books, registers, codes = [], unlinkedCodes = []
       )}
 
       {mode === null && (
-        <div className="mt-auto flex flex-wrap gap-2 pt-1">
-          {!a.isSuperAdmin && <button type="button" className={btnSecondary} onClick={startAccess}>Edit ledgers</button>}
-          {!a.isSuperAdmin && <button type="button" className={btnSecondary} onClick={startLoans}>Edit loans</button>}
-          <button type="button" className={btnSecondary} onClick={startProfile}>Edit details</button>
-          <button type="button" className={btnSecondary} onClick={() => { setMode('password'); setLocalError(''); }}>Reset password</button>
-          {!isMe && <button type="button" className={btnSecondary} disabled={busy} onClick={() => setTypeDialog(true)}>{a.isSuperAdmin ? 'Make normal admin' : 'Make super admin'}</button>}
+        <div className="mt-auto flex flex-wrap gap-1.5 pt-3">
+          {!a.isSuperAdmin && <button type="button" className={btnSm} onClick={startAccess}>Edit ledgers</button>}
+          {!a.isSuperAdmin && <button type="button" className={btnSm} onClick={startLoans}>Edit loans</button>}
+          <button type="button" className={btnSm} onClick={startProfile}>Edit details</button>
+          <button type="button" className={btnSm} onClick={() => { setMode('password'); setLocalError(''); }}>Reset password</button>
+          {!isMe && <button type="button" className={btnSm} disabled={busy} onClick={() => setTypeDialog(true)}>{a.isSuperAdmin ? 'Make normal admin' : 'Make super admin'}</button>}
           {!isMe && (
-            <button type="button" className={btnSecondary} disabled={busy} onClick={toggleDisabled}>
+            <button type="button" className={btnSm} disabled={busy} onClick={toggleDisabled}>
               {a.disabled ? 'Enable' : 'Disable'}
             </button>
           )}
-          {!isMe && <button type="button" className={btnDanger} onClick={() => { setMode('delete'); setLocalError(''); }}>Delete admin</button>}
+          {!isMe && <button type="button" className={btnSmDanger} onClick={() => { setMode('delete'); setLocalError(''); }}>Delete admin</button>}
         </div>
       )}
 
@@ -606,6 +618,7 @@ function UserCard({ account: a, books, registers, codes = [], unlinkedCodes = []
           confirmLabel={a.isSuperAdmin ? 'Make normal admin' : 'Make super admin'}
           busy={busy} onConfirm={changeType} onCancel={() => setTypeDialog(false)} />
       )}
+      <StampFooter className="!mt-0" extra={a.lastLoginAt ? `Last sign-in ${new Date(a.lastLoginAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}` : ''} />
     </article>
   );
 }
@@ -673,7 +686,6 @@ function LedgersPanel() {
                 {b.active === false && <span className="ml-2 rounded bg-muted px-1.5 py-0.5 align-middle text-xs font-normal text-muted-foreground">Inactive</span>}
               </p>
               <p className="truncate text-xs text-muted-foreground">ID {b.id}</p>
-              <Stamp createdAt={b.createdAt} updatedAt={b.updatedAt} className="text-xs text-muted-foreground" />
             </div>
             <p className="text-sm text-muted-foreground">
               Base currency <span className="rounded bg-muted px-1.5 py-0.5 font-semibold text-foreground"><CurrencyLabel code={b.baseCurrency} /></span>
@@ -691,11 +703,12 @@ function LedgersPanel() {
                 </>
               )}
             </div>
-            <div className="mt-auto flex flex-wrap gap-2">
-              <button type="button" className={btnSecondary} onClick={() => { selectBook(b.id); window.location.hash = '#/'; }}>Open</button>
-              <button type="button" className={btnSecondary} onClick={() => setEditing(b)}>Edit</button>
-              <button type="button" className={btnDanger} onClick={() => setDeleting(b)}>Delete</button>
+            <div className="mt-auto flex flex-wrap gap-1.5 pt-3">
+              <button type="button" className={btnSm} onClick={() => { selectBook(b.id); window.location.hash = '#/'; }}>Open</button>
+              <button type="button" className={btnSm} onClick={() => setEditing(b)}>Edit</button>
+              <button type="button" className={btnSmDanger} onClick={() => setDeleting(b)}>Delete</button>
             </div>
+            <StampFooter className="!mt-0" createdAt={b.createdAt} updatedAt={b.updatedAt} />
           </li>
         ))}
       </ul>
