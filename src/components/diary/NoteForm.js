@@ -5,7 +5,7 @@ import ComboInput from '../common/ComboInput';
 import { errorMessage } from '../common/format';
 import { RichText, RichTextEditor } from './RichText';
 import { inputCls, btnPrimary, btnSecondary, btnDanger, Field, Toggle } from '../settings/ui';
-import { asItems, spanText, EntryMarks, ZoneLine, NowLine, useAppZone, inheritedFrom, fromText, ZoneSelect } from './shared';
+import { asItems, spanText, EntryMarks, ZoneLine, NowLine, useAppZone, inheritedFrom, fromText, ZoneSelect, ColorPicker } from './shared';
 import { nowInZone } from '../../utils/timeZones';
 
 const niceStart = n => spanText({ date: n.date, time: n.time });
@@ -26,7 +26,7 @@ export default function NoteForm({ base, note, copyOf, preset, projects, categor
     date: note?.date || nowInZone(appZone).date, time: src?.time || '', timeZone: src?.timeZone || '', endDate: src?.endDate || '', endTime: src?.endTime || '', title: src?.title || '', message: src?.message || '',
     fromName: src?.fromName || '', toName: src?.toName || '', projectId: src?.projectId || '',
     category: src ? (src.categoryName || '') : (preset?.categoryName || ''),
-    repeatYearly: Boolean(src?.repeatYearly), important: Boolean(src?.important), locked: Boolean(note?.locked)
+    repeatYearly: Boolean(src?.repeatYearly), important: Boolean(src?.important), locked: Boolean(note?.locked), color: src?.color || ''
   }));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -62,7 +62,7 @@ export default function NoteForm({ base, note, copyOf, preset, projects, categor
       const body = {
         kind: f.kind, date: f.date, time: f.time || null, timeZone: (f.time || f.endTime) && f.timeZone ? f.timeZone : null, endDate: f.endDate || null, endTime: f.endTime || null, title: f.title.trim(), message: f.message.trim() || null,
         fromName: f.fromName.trim() || null, toName: f.toName.trim() || null,
-        projectId: f.projectId || null, categoryId, important: f.important, repeatYearly: isDate && f.repeatYearly, locked: f.locked
+        projectId: f.projectId || null, categoryId, important: f.important, repeatYearly: isDate && f.repeatYearly, locked: f.locked, color: f.color || null
       };
       if (note) await api.put(`${base}/entries/${note.id}`, body);
       else await api.post(`${base}/entries`, body);
@@ -111,6 +111,7 @@ export default function NoteForm({ base, note, copyOf, preset, projects, categor
           <Toggle label="Important date" hint="A day to remember, with a countdown." checked={isDate} onChange={() => setF(s => ({ ...s, kind: s.kind === 'date' ? 'note' : 'date' }))} disabled={busy} />
           <Toggle label="Starred" hint="Marks it with a star." checked={f.important} onChange={() => setF(s => ({ ...s, important: !s.important }))} disabled={busy} />
         </div>
+        <Field label="Colour"><ColorPicker value={f.color} onChange={v => setF(s => ({ ...s, color: v }))} disabled={busy} /></Field>
         <Field label="Category (a person or a topic)">
           <ComboInput value={f.category} onChange={v => setF(s => ({ ...s, category: v }))} items={categories.map(c => ({ id: c.id, name: c.name }))} inputClassName={inputCls} placeholder="Pick or type, for example Car" noun="category" />
         </Field>

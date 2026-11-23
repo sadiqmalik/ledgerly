@@ -8,6 +8,27 @@ import { allZones, browserZone, formatInZone, nowInZone, zoneLabel, zonedToInsta
 export const asItems = list => list.map(name => ({ id: name.toLowerCase(), name }));
 export const pill = 'rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground';
 
+// Entry colours: a fixed list (the server accepts only these keys). Full class names so Tailwind keeps them.
+export const COLOR_KEYS = ['red', 'orange', 'amber', 'green', 'teal', 'blue', 'purple', 'pink'];
+export const COLOR_BG = { red: 'bg-red-500', orange: 'bg-orange-500', amber: 'bg-amber-500', green: 'bg-green-500', teal: 'bg-teal-500', blue: 'bg-blue-500', purple: 'bg-purple-500', pink: 'bg-pink-500' };
+export const COLOR_BORDER = { red: 'border-l-red-500', orange: 'border-l-orange-500', amber: 'border-l-amber-500', green: 'border-l-green-500', teal: 'border-l-teal-500', blue: 'border-l-blue-500', purple: 'border-l-purple-500', pink: 'border-l-pink-500' };
+// A coloured left edge for a card ('' when the entry has no colour).
+export const COLOR_TINT = { red: 'bg-red-500/15', orange: 'bg-orange-500/15', amber: 'bg-amber-500/15', green: 'bg-green-500/15', teal: 'bg-teal-500/15', blue: 'bg-blue-500/15', purple: 'bg-purple-500/15', pink: 'bg-pink-500/15' };
+// A tinted background plus coloured left edge for a card; plain card background when there is no colour.
+export const colorEdge = color => (COLOR_BORDER[color] ? `border-l-4 ${COLOR_BORDER[color]} ${COLOR_TINT[color]}` : 'bg-card');
+
+// A row of round swatches plus "none"; the selected one has a ring.
+export const ColorPicker = ({ value, onChange, disabled }) => (
+  <div role="group" aria-label="Colour" className="flex flex-wrap items-center gap-2">
+    <button type="button" aria-label="No colour" aria-pressed={!value} disabled={disabled} onClick={() => onChange('')}
+      className={`h-6 w-6 rounded-full border border-dashed border-border bg-card text-xs leading-none text-muted-foreground ${!value ? 'ring-2 ring-accent ring-offset-2 ring-offset-card' : ''}`}>&times;</button>
+    {COLOR_KEYS.map(k => (
+      <button key={k} type="button" aria-label={k} aria-pressed={value === k} disabled={disabled} onClick={() => onChange(k)}
+        className={`h-6 w-6 rounded-full ${COLOR_BG[k]} ${value === k ? 'ring-2 ring-accent ring-offset-2 ring-offset-card' : ''}`} />
+    ))}
+  </div>
+);
+
 export { stampText } from '../common/Stamp';
 
 // "today", "tomorrow", "in 12 days".

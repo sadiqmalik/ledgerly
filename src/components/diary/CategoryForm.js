@@ -2,20 +2,20 @@ import React, { useState } from 'react';
 import { api } from '../../services/dataAPI';
 import Modal from '../common/Modal';
 import { errorMessage } from '../common/format';
-import { inputCls, btnPrimary, btnSecondary, Field } from '../settings/ui';
+import { inputCls, btnPrimary, btnSecondary, Field, Toggle } from '../settings/ui';
 import { useAppZone, inheritedFrom, ZoneSelect } from './shared';
 
 // Create (category null) or rename a diary category. The description is the category's main note.
 export default function CategoryForm({ base, category, notebookZone = null, onClose, onSaved }) {
   const appZone = useAppZone();
   const inherited = inheritedFrom([[notebookZone, 'notebook']], appZone);
-  const [f, setF] = useState({ name: category?.name || '', description: category?.description || '', timeZone: category?.timeZone || '' });
+  const [f, setF] = useState({ name: category?.name || '', description: category?.description || '', timeZone: category?.timeZone || '', layout: category?.layout || 'rows' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const submit = async e => {
     e.preventDefault();
     if (!f.name.trim()) { setError('Enter a name.'); return; }
-    const body = { name: f.name.trim(), description: f.description.trim() || null, timeZone: f.timeZone || null };
+    const body = { name: f.name.trim(), description: f.description.trim() || null, timeZone: f.timeZone || null, layout: f.layout };
     setBusy(true);
     try {
       const r = category
@@ -31,6 +31,7 @@ export default function CategoryForm({ base, category, notebookZone = null, onCl
         <Field label="Name"><input className={inputCls} value={f.name} onChange={e => setF(s => ({ ...s, name: e.target.value }))} required maxLength={80} autoFocus placeholder="A person or a topic, for example Car" /></Field>
         <Field label="Main note (optional)"><textarea rows={4} className={inputCls} value={f.description} onChange={e => setF(s => ({ ...s, description: e.target.value }))} maxLength={2000} placeholder="Shown at the top of the category" /></Field>
         <Field label="Time zone"><ZoneSelect value={f.timeZone} onChange={v => setF(s => ({ ...s, timeZone: v }))} inherited={inherited} disabled={busy} /></Field>
+        <Toggle label="Show entries in columns" hint="On: side by side in columns. Off: one under another in rows." checked={f.layout === 'columns'} onChange={() => setF(s => ({ ...s, layout: s.layout === 'columns' ? 'rows' : 'columns' }))} disabled={busy} />
         <div className="flex gap-2">
           <button type="submit" className={btnPrimary} disabled={busy}>{busy ? 'Saving...' : 'Save'}</button>
           <button type="button" className={btnSecondary} onClick={onClose} disabled={busy}>Cancel</button>

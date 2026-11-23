@@ -15,23 +15,24 @@ const noteTime = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'must be HH:MM (2
 // A real IANA zone name such as 'Europe/Stockholm'; the runtime's Intl knows the list.
 const isZone = v => { try { new Intl.DateTimeFormat('en', { timeZone: v }); return true; } catch { return false; } };
 const zone = z.string().trim().min(1).max(64).refine(isZone, 'must be an IANA time zone, for example Europe/Stockholm');
+const color = z.union([z.enum(['red', 'orange', 'amber', 'green', 'teal', 'blue', 'purple', 'pink']), z.literal('')]).nullable();
 const fields = {
   date: isoDate, time: noteTime.nullable(), timeZone: zone.nullable(), endDate: isoDate.nullable(), endTime: noteTime.nullable(), title: text(200).min(1), message: text(8000).nullable(),
   fromName: text(120).nullable(), toName: text(120).nullable(), projectId: id.nullable(),
-  important: flag, active: flag, categoryId: id.nullable(), kind: z.enum(['note', 'date']), repeatYearly: flag, locked: flag
+  important: flag, active: flag, categoryId: id.nullable(), kind: z.enum(['note', 'date']), repeatYearly: flag, locked: flag, color
 };
 const COLS = {
   date: 'date', time: 'note_time', timeZone: 'time_zone', endDate: 'end_date', endTime: 'end_time', title: 'title', message: 'message', fromName: 'from_name', toName: 'to_name', projectId: 'project_id',
-  important: 'important', active: 'active', categoryId: 'category_id', kind: 'kind', repeatYearly: 'repeat_yearly', locked: 'locked'
+  important: 'important', active: 'active', categoryId: 'category_id', kind: 'kind', repeatYearly: 'repeat_yearly', locked: 'locked', color: 'color'
 };
 const createSchema = z.object({
   date: fields.date, time: fields.time.optional(), timeZone: fields.timeZone.optional(), endDate: fields.endDate.optional(), endTime: fields.endTime.optional(), title: fields.title, message: fields.message.optional(), fromName: fields.fromName.optional(),
   toName: fields.toName.optional(), projectId: fields.projectId.optional(), important: fields.important.optional(),
-  categoryId: fields.categoryId.optional(), kind: fields.kind.optional(), repeatYearly: fields.repeatYearly.optional(), locked: fields.locked.optional()
+  categoryId: fields.categoryId.optional(), kind: fields.kind.optional(), repeatYearly: fields.repeatYearly.optional(), locked: fields.locked.optional(), color: fields.color.optional()
 }).strict();
 const updateSchema = z.object(Object.fromEntries(Object.entries(fields).map(([k, v]) => [k, v.optional()]))).strict();
-const categorySchema = z.object({ name: text(80).min(1), description: text(2000).nullable().optional(), timeZone: zone.nullable().optional() }).strict();
-const categoryUpdateSchema = z.object({ name: text(80).min(1).optional(), description: text(2000).nullable().optional(), timeZone: zone.nullable().optional(), locked: flag.optional() }).strict();
+const categorySchema = z.object({ name: text(80).min(1), description: text(2000).nullable().optional(), timeZone: zone.nullable().optional(), layout: z.enum(['rows', 'columns']).optional() }).strict();
+const categoryUpdateSchema = z.object({ name: text(80).min(1).optional(), description: text(2000).nullable().optional(), timeZone: zone.nullable().optional(), locked: flag.optional(), layout: z.enum(['rows', 'columns']).optional() }).strict();
 const extraIds = z.array(id).max(50);
 const notebookSchema = z.object({ name: text(80).min(1), description: text(2000).nullable().optional(), bookId: id.nullable().optional(), extraLedgerIds: extraIds.optional(), timeZone: zone.nullable().optional() }).strict();
 const notebookUpdateSchema = z.object({ name: text(80).min(1).optional(), description: text(2000).nullable().optional(), bookId: id.nullable().optional(), extraLedgerIds: extraIds.optional(), timeZone: zone.nullable().optional(), locked: flag.optional() }).strict();
@@ -55,7 +56,7 @@ const resolveZone = r => {
 const map = r => ({
   id: r.id, notebookId: r.notebook_id, date: r.date, time: r.note_time || null, timeZone: r.time_zone || null, ...resolveZone(r), endDate: r.end_date || (r.end_time ? r.date : null), endTime: r.end_time || null, title: r.title, message: r.message, fromName: r.from_name, toName: r.to_name,
   projectId: r.project_id, projectName: r.project_name, categoryId: r.category_id, categoryName: r.category_name,
-  kind: r.kind, repeatYearly: r.repeat_yearly === 1, important: r.important === 1, active: r.active === 1, locked: r.locked === 1,
+  kind: r.kind, repeatYearly: r.repeat_yearly === 1, important: r.important === 1, active: r.active === 1, locked: r.locked === 1, color: r.color || null,
   effectiveLocked: r.locked === 1 || r.category_locked === 1 || r.notebook_locked === 1,
   createdAt: r.created_at, updatedAt: r.updated_at
 });
@@ -200,7 +201,7 @@ const registerDiaryRoutes = (app, { repo }) => {
     }
   };
   const onlyLocked = data => Object.keys(data).every(k => k === 'locked');
-  const mapCategory = (r, stats = {}) => ({ id: r.id, name: r.name, description: r.description, timeZone: r.time_zone || null, locked: r.locked === 1, createdAt: r.created_at, updatedAt: r.updated_at, noteCount: 0, dateCount: 0, nextDate: null, nextDaysAway: null, ...stats });
+  const mapCategory = (r, stats = {}) => ({ id: r.id, name: r.name, description: r.description, timeZone: r.time_zone || null, locked: r.locked === 1, layout: r.layout === 'columns' ? 'columns' : 'rows', createdAt: r.created_at, updatedAt: r.updated_at, noteCount: 0, dateCount: 0, nextDate: null, nextDaysAway: null, ...stats });
   const idFilter = (raw, column, where, params) => {
     const ids = raw.split(',').filter(Boolean).slice(0, 100);
     const real = ids.filter(x => x !== 'none');
@@ -388,11 +389,11 @@ const registerDiaryRoutes = (app, { repo }) => {
     const eid = crypto.randomUUID();
     const at = now();
     await L.run(
-      `INSERT INTO diary_notes (id, book_id, notebook_id, date, note_time, time_zone, end_date, end_time, title, message, from_name, to_name, project_id, category_id, kind, repeat_yearly, important, active, locked, created_by, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)`,
+      `INSERT INTO diary_notes (id, book_id, notebook_id, date, note_time, time_zone, end_date, end_time, title, message, from_name, to_name, project_id, category_id, kind, repeat_yearly, important, active, locked, color, created_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)`,
       eid, nb.book_id || '', nb.id, data.date, data.time || null, data.timeZone || null, data.endDate || null, data.endTime || null, data.title, data.message || null, data.fromName || null, data.toName || null,
       data.projectId || null, data.categoryId || null, kind, kind === 'date' && data.repeatYearly ? 1 : 0,
-      data.important ? 1 : 0, data.locked ? 1 : 0, account.id, at, at).run();
+      data.important ? 1 : 0, data.locked ? 1 : 0, data.color || null, account.id, at, at).run();
     return c.json(map(await L.first(`${SELECT} WHERE n.id = ?`, eid)), 201);
   });
 
@@ -463,8 +464,8 @@ const registerDiaryRoutes = (app, { repo }) => {
     await checkCategoryName(nb.id, data.name);
     const cid = crypto.randomUUID();
     const at = now();
-    await L.run('INSERT INTO diary_categories (id, book_id, owner_id, notebook_id, name, description, time_zone, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      cid, nb.book_id || '', nb.owner_id, nb.id, data.name, data.description || null, data.timeZone || null, at, at).run();
+    await L.run('INSERT INTO diary_categories (id, book_id, owner_id, notebook_id, name, description, time_zone, layout, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      cid, nb.book_id || '', nb.owner_id, nb.id, data.name, data.description || null, data.timeZone || null, data.layout || 'rows', at, at).run();
     return c.json(mapCategory(await getCategory(nb.id, cid)), 201);
   });
 
@@ -477,8 +478,8 @@ const registerDiaryRoutes = (app, { repo }) => {
     guardNotebook(nb);
     if (row.locked === 1 && !onlyLocked(data)) throw new AppError(CAT_LOCKED, 409);
     if (data.name) await checkCategoryName(nb.id, data.name, cid);
-    await L.run('UPDATE diary_categories SET name = ?, description = ?, time_zone = ?, locked = ?, updated_at = ? WHERE id = ? AND notebook_id = ?',
-      data.name ?? row.name, data.description === undefined ? row.description : (data.description || null), data.timeZone === undefined ? row.time_zone : (data.timeZone || null), data.locked === undefined ? row.locked : (data.locked ? 1 : 0), now(), cid, nb.id).run();
+    await L.run('UPDATE diary_categories SET name = ?, description = ?, time_zone = ?, locked = ?, layout = ?, updated_at = ? WHERE id = ? AND notebook_id = ?',
+      data.name ?? row.name, data.description === undefined ? row.description : (data.description || null), data.timeZone === undefined ? row.time_zone : (data.timeZone || null), data.locked === undefined ? row.locked : (data.locked ? 1 : 0), data.layout ?? row.layout ?? 'rows', now(), cid, nb.id).run();
     return c.json(mapCategory(await getCategory(nb.id, cid)));
   });
 

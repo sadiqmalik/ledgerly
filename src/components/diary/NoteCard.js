@@ -2,7 +2,7 @@ import { StampFooter } from '../common/Stamp';
 import React from 'react';
 import { btnSecondary, btnDanger } from '../settings/ui';
 import { RichText } from './RichText';
-import { pill, CalendarIcon, stampText, spanText, LockIcon, EntryMarks, useAppZone } from './shared';
+import { pill, colorEdge, CalendarIcon, stampText, spanText, LockIcon, EntryMarks, useAppZone } from './shared';
 
 // One entry as a boxed card (the same style as the loan and project cards). The card opens the editor.
 export default function NoteCard({ note: n, canEdit, onEdit, onDuplicate, onToggleActive, onDelete, onLock, hideCategory = false, countdown = null, soon = false }) {
@@ -12,7 +12,7 @@ export default function NoteCard({ note: n, canEdit, onEdit, onDuplicate, onTogg
     <div role="button" tabIndex={0}
       onClick={() => onEdit(n)}
       onKeyDown={e => { if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) { e.preventDefault(); onEdit(n); } }}
-      className={`flex h-full flex-col rounded-xl border bg-card p-4 text-foreground cursor-pointer hover:bg-muted/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${n.important ? 'border-accent' : 'border-border'} ${n.active ? '' : 'opacity-70'}`}>
+      className={`flex h-full flex-col rounded-xl border p-4 text-foreground cursor-pointer hover:bg-muted/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${colorEdge(n.color)} ${n.important ? 'border-accent' : 'border-border'} ${n.active ? '' : 'opacity-70'}`}>
       <div className="flex items-start justify-between gap-2">
         <h2 className="min-w-0 text-lg font-semibold">{n.important && <span role="img" aria-label="Starred" title="Starred" className="mr-1 text-accent">&#9733;</span>}{n.title}{n.repeatYearly && <> <EntryMarks note={n} size={15} /></>}</h2>
         <span className="flex shrink-0 items-center gap-1">

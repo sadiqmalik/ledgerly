@@ -69,7 +69,7 @@ export default function CategoryPage({ base, nbId, category, canEdit, notebookLo
       {sorted && !sorted.length && <p className="text-sm text-muted-foreground">Nothing here yet.{open && ' Use Add date or Add note.'}</p>}
 
       {!!sorted?.length && (
-        <EntryGrid rows={sorted} newestFirst={newestFirst} canEdit={open} hideCategory noteCols="19rem" onEdit={onEdit} onDuplicate={onDuplicate} onToggleActive={onToggleActive} onDelete={onDeleteNote} onLock={onLock}
+        <EntryGrid rows={sorted} newestFirst={newestFirst} canEdit={open} hideCategory layout={category.layout} noteCols="19rem" onEdit={onEdit} onDuplicate={onDuplicate} onToggleActive={onToggleActive} onDelete={onDeleteNote} onLock={onLock}
           countdownFor={r => { const cd = countdown(r.id); return cd && cd.daysAway >= 0 ? { text: whenText(cd.daysAway), soon: cd.daysAway === 0 } : null; }} />
       )}
 
