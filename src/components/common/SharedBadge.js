@@ -51,3 +51,22 @@ export default function SharedBadge({ ledgerNames = [], all = false, kind = 'not
     </span>
   );
 }
+
+// The matching pill for a notebook that is not linked to any ledger: same size, colour and slot as SharedBadge, so the
+// two always sit in the same place after the name. Hidden for access-code sessions (they never see private notebooks).
+const LockIcon = () => (
+  <svg aria-hidden="true" viewBox="0 0 24 24" className="size-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="5" y="11" width="14" height="9" rx="2" />
+    <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+  </svg>
+);
+
+export function PrivateBadge({ className = '' }) {
+  const title = 'Private: not linked to a ledger, only you can see it';
+  return (
+    <span tabIndex={0} title={title} aria-label={title}
+      className={`inline-flex shrink-0 items-center gap-1 rounded-full border border-accent/60 bg-accent/10 px-1.5 py-px text-[11px] font-semibold leading-4 text-accent outline-none focus-visible:ring-2 focus-visible:ring-accent ${className}`}>
+      <LockIcon />Private
+    </span>
+  );
+}

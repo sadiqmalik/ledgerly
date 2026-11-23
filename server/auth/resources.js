@@ -91,7 +91,7 @@ const requiredResources = (method, rest, query = {}) => {
       if (read) return ['ledger', 'settings'];
       if (second === 'preview' || second === 'fetch-rate') return ['ledger'];
       return second === 'rates' && method === 'PUT' ? ['ledger', 'settings'] : ['settings'];
-    case 'appearance': return read ? null : ['settings'];
+    case 'appearance': case 'timezone': return read ? null : ['settings'];
     case 'entry-counts': return read ? ['settings'] : [];
     case 'export': return ['ledger', 'projects', 'documents', 'items']; // what is exported is limited to these pages in worker/routes/export.js
     case 'members': case 'active': return ['settings'];

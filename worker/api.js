@@ -19,6 +19,7 @@ const { registerItemRoutes } = require('./routes/items');
 const { registerExportRoutes } = require('./routes/export');
 const optional = require('../server/optionalModules');
 const { registerAppearanceRoutes } = require('./routes/appearance');
+const { registerTimeZoneRoutes } = require('./routes/timezone');
 const { registerEntryCountRoutes } = require('./routes/entryCounts');
 const { registerLoanRoutes } = require('./routes/loans');
 const { registerCurrencyRoutes } = require('./routes/currencies');
@@ -159,6 +160,7 @@ const createApi = ({ repo, auth, allowedOrigin = 'https://app.ledgerly.test', en
   registerExportRoutes(app, { repo });
   for (const register of optional.routes) register(app, { repo, env });
   registerAppearanceRoutes(app, { repo });
+  registerTimeZoneRoutes(app, { repo });
   registerEntryCountRoutes(app, { repo });
   registerLoanRoutes(app, { repo });
   registerCurrencyRoutes(app, { repo });

@@ -12,6 +12,7 @@ import { settingsTabs as optionalTabs } from '../../optionalModules';
 import DashboardTab from './DashboardTab';
 import AppearanceTab from './AppearanceTab';
 import PageNamesTab from './PageNamesTab';
+import TimeZoneTab from './TimeZoneTab';
 import CodesTab from './CodesTab';
 import { useAuth } from '../../auth/AuthContext';
 import CurrencyLabel from '../common/CurrencyLabel';
@@ -34,6 +35,7 @@ const TABS = [
   { key: 'codes', label: 'Access codes', group: 'Access', Component: CodesTab, editableBy: ['admin'], visibleTo: ['admin'], hideReadOnly: true, hideForSuper: true }, // super administrators manage codes on the Admin page
   { key: 'data', label: 'Data', group: 'Data', Component: DataTab, editableBy: ['admin', 'editor', 'viewer'], hideReadOnly: true },
   { key: 'pagenames', label: 'Page names', group: 'Settings', Component: PageNamesTab, editableBy: ['admin'], hideReadOnly: true, visibleTo: ['admin'] },
+  { key: 'timezone', label: 'Time zone', group: 'Settings', Component: TimeZoneTab, editableBy: ['admin'] },
   { key: 'appearance', label: 'Appearance', group: 'Settings', Component: AppearanceTab, editableBy: ['admin'], hideReadOnly: true },
   { key: 'dashboard', label: 'Dashboard', group: 'Settings', Component: DashboardTab, editableBy: ['admin', 'editor', 'viewer'], hideReadOnly: true },
 ];

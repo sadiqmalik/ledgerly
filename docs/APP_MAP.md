@@ -349,6 +349,10 @@ If you kept your money in a spreadsheet, start by creating the funds and categor
 | Group dates and notes under a person or topic | Notebook | **New category**, or type a category in the entry |
 | See what is coming up | Notebook > Upcoming | the strip at the top |
 | Hide or bring back an entry | Notebook | **Disable** or **Enable** |
+| Give an entry a time or an end (duration) | Notebook > entry form | The date and time box, then the end box |
+| Set a time zone for an entry, category or notebook | Its form | **Time zone** (starts on the inherited one) |
+| Set the ledger's time zone | Settings > Time zone (admin) | Pick a zone, save |
+| Lock an entry, category or notebook | Category or notebook header, or the entry's edit form (editor) | **Lock** / **Unlock**; a locked one opens read-only |
 | Share a notebook, loan or item with other ledgers | The form of the record | **Also share with** switches; only the main ledger can edit it |
 | Move a record to another main ledger | The form of the record | Change **Ledger** (Admin in both ledgers) |
 | See where a record is shared | Its card | The two-people badge, hover for details (loans in no ledger show **All**) |

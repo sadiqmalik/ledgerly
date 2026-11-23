@@ -95,6 +95,113 @@ describe('notebooks API', () => {
     assert.equal((await owner.put(`${NB}/${a.id}`).send({ bookId: BOOK })).body.bookId, BOOK);
   });
 
+  it('entries carry an optional time of day: validation, update, ordering, yearly repeat', async () => {
+    const nb = (await linked('Timed')).id;
+    const E = `${NB}/${nb}/entries`;
+    const a = await entry(nb, { time: '14:30', title: 'Late' });
+    assert.equal(a.status, 201); assert.equal(a.body.time, '14:30');
+    for (const bad of ['24:00', '9:5', 'abc', '12:60']) assert.equal((await entry(nb, { time: bad })).status, 400, bad);
+    // Old entries without a time still list, with time null; they come first within a day, then by time.
+    await ctx.d1.prepare("INSERT INTO diary_notes (id, book_id, notebook_id, date, title, kind, created_by, created_at, updated_at) VALUES ('old', ?, ?, '2026-02-01', 'Old', 'note', 'x', 't', 't')").bind(BOOK, nb).run();
+    await entry(nb, { time: '08:15', title: 'Early' });
+    await entry(nb, { title: 'No time' });
+    const list = (await owner.get(E)).body;
+    const times = list.map(n => n.time || '');
+    assert.deepEqual(times, [...times].sort());
+    assert.equal(list.find(n => n.id === 'old').time, null);
+    // Update and clear.
+    assert.equal((await owner.put(`${E}/${a.body.id}`).send({ time: '09:00' })).body.time, '09:00');
+    assert.equal((await owner.put(`${E}/${a.body.id}`).send({ time: null })).body.time, null);
+    assert.equal((await owner.put(`${E}/${a.body.id}`).send({ time: '7:00' })).status, 400);
+    // A yearly date keeps its time in the upcoming list, sorted by time within a day.
+    await entry(nb, { kind: 'date', date: '2020-03-10', title: 'Anniversary', repeatYearly: true, time: '18:00' });
+    await entry(nb, { kind: 'date', date: '2020-03-10', title: 'Breakfast', repeatYearly: true, time: '07:30' });
+    const up = (await owner.get(`${NB}/${nb}/upcoming?today=2026-03-09&days=5`)).body;
+    assert.deepEqual(up.map(n => [n.title, n.time, n.daysAway]), [['Breakfast', '07:30', 1], ['Anniversary', '18:00', 1]]);
+  });
+
+  it('an entry can carry an IANA time zone: validated, returned, kept by copies and yearly repeats, cleared with null', async () => {
+    const nb = (await linked('Zones')).id;
+    const E = `${NB}/${nb}/entries`;
+    assert.equal((await entry(nb, { date: '2026-01-12', time: '14:30', timeZone: 'Mars/Base' })).status, 400);
+    assert.equal((await entry(nb, { date: '2026-01-12', time: '14:30', timeZone: '' })).status, 400);
+    assert.equal((await entry(nb, { date: '2026-01-12' })).body.timeZone, null);
+    const made = await entry(nb, { date: '2026-01-12', time: '14:30', timeZone: 'Europe/Stockholm' });
+    assert.equal(made.status, 201);
+    assert.equal(made.body.timeZone, 'Europe/Stockholm');
+    const copy = await entry(nb, { date: '2026-02-02', time: '14:30', timeZone: made.body.timeZone });
+    assert.equal(copy.body.timeZone, 'Europe/Stockholm');
+    assert.equal((await owner.put(`${E}/${made.body.id}`).send({ timeZone: 'nope' })).status, 400);
+    assert.equal((await owner.put(`${E}/${made.body.id}`).send({ timeZone: 'Asia/Karachi' })).body.timeZone, 'Asia/Karachi');
+    await entry(nb, { kind: 'date', date: '2020-03-10', time: '09:00', timeZone: 'America/New_York', title: 'Call', repeatYearly: true });
+    const up = (await owner.get(`${NB}/${nb}/upcoming?today=2026-03-09&days=5`)).body;
+    assert.equal(up[0].timeZone, 'America/New_York');
+    assert.equal((await owner.put(`${E}/${made.body.id}`).send({ timeZone: null })).body.timeZone, null);
+  });
+
+  it('time zones inherit: entry > category > notebook, null inherits, bad zone 400, locks block a zone change', async () => {
+    assert.equal((await owner.post(NB).send({ name: 'Bad', bookId: BOOK, timeZone: 'Mars/Base' })).status, 400);
+    const nbk = (await owner.post(NB).send({ name: 'Inherit', bookId: BOOK, timeZone: 'Asia/Karachi' })).body;
+    assert.equal(nbk.timeZone, 'Asia/Karachi');
+    const C = `${NB}/${nbk.id}/categories`;
+    const E = `${NB}/${nbk.id}/entries`;
+    assert.equal((await owner.post(C).send({ name: 'Bad', timeZone: 'nope' })).status, 400);
+    const cat = (await owner.post(C).send({ name: 'Trips', timeZone: 'Europe/Stockholm' })).body;
+    const plain = (await owner.post(C).send({ name: 'Plain' })).body;
+    assert.equal(cat.timeZone, 'Europe/Stockholm'); assert.equal(plain.timeZone, null);
+    const own = (await entry(nbk.id, { time: '10:00', timeZone: 'America/New_York', categoryId: cat.id })).body;
+    const viaCat = (await entry(nbk.id, { time: '10:00', categoryId: cat.id })).body;
+    const viaNb = (await entry(nbk.id, { time: '10:00', categoryId: plain.id })).body;
+    assert.deepEqual([own.resolvedTimeZone, own.timeZoneFrom], ['America/New_York', 'entry']);
+    assert.deepEqual([viaCat.timeZone, viaCat.resolvedTimeZone, viaCat.timeZoneFrom], [null, 'Europe/Stockholm', 'category']);
+    assert.deepEqual([viaNb.resolvedTimeZone, viaNb.timeZoneFrom], ['Asia/Karachi', 'notebook']);
+    // Changing the category zone changes the inheriting entries; null inherits again.
+    assert.equal((await owner.put(`${C}/${cat.id}`).send({ timeZone: 'Asia/Tokyo' })).body.timeZone, 'Asia/Tokyo');
+    assert.equal((await owner.get(E)).body.find(n => n.id === viaCat.id).resolvedTimeZone, 'Asia/Tokyo');
+    assert.equal((await owner.put(`${C}/${cat.id}`).send({ timeZone: null })).body.timeZone, null);
+    assert.deepEqual([(await owner.get(E)).body.find(n => n.id === viaCat.id).timeZoneFrom], ['notebook']);
+    assert.equal((await owner.put(`${NB}/${nbk.id}`).send({ timeZone: null })).body.timeZone, null);
+    const none = (await owner.get(E)).body.find(n => n.id === viaCat.id);
+    assert.deepEqual([none.resolvedTimeZone, none.timeZoneFrom], [null, null]);
+    assert.equal((await owner.put(`${NB}/${nbk.id}`).send({ timeZone: 'bad' })).status, 400);
+    // Locks.
+    assert.equal((await owner.put(`${C}/${cat.id}`).send({ locked: true })).status, 200);
+    assert.equal((await owner.put(`${C}/${cat.id}`).send({ timeZone: 'UTC' })).status, 409);
+    await owner.put(`${C}/${cat.id}`).send({ locked: false });
+    assert.equal((await owner.put(`${NB}/${nbk.id}`).send({ locked: true })).status, 200);
+    assert.equal((await owner.put(`${NB}/${nbk.id}`).send({ timeZone: 'UTC' })).status, 409);
+    assert.equal((await owner.put(`${NB}/${nbk.id}`).send({ locked: false })).body.timeZone, null);
+  });
+
+  it('entries can end later: end rules, clearing and shifted yearly end', async () => {
+    const nb = (await linked('Span')).id;
+    const E = `${NB}/${nb}/entries`;
+    const bad = { date: '2026-01-12', time: '14:30' };
+    assert.equal((await entry(nb, { ...bad, endDate: '2026-01-11' })).status, 400);
+    assert.equal((await entry(nb, { ...bad, endTime: '14:00' })).status, 400); // same day, earlier
+    assert.equal((await entry(nb, { ...bad, endDate: '2026-01-12', endTime: '14:29' })).status, 400);
+    assert.equal((await entry(nb, { ...bad, endTime: '9:00' })).status, 400);
+    const same = await entry(nb, { ...bad, endTime: '16:00' }); // end time only: the start day
+    assert.equal(same.status, 201);
+    assert.deepEqual([same.body.endDate, same.body.endTime], ['2026-01-12', '16:00']);
+    assert.equal((await entry(nb, { ...bad, endTime: '14:30' })).status, 201); // equal is fine
+    const multi = await entry(nb, { date: '2026-01-12', endDate: '2026-01-14' }); // dates only
+    assert.deepEqual([multi.body.endDate, multi.body.endTime, multi.body.time], ['2026-01-14', null, null]);
+    assert.deepEqual([(await entry(nb, {})).body.endDate, (await entry(nb, {})).body.endTime], [null, null]);
+    // Update checks against the stored values, and null clears.
+    assert.equal((await owner.put(`${E}/${multi.body.id}`).send({ date: '2026-01-20' })).status, 400);
+    assert.equal((await owner.put(`${E}/${multi.body.id}`).send({ endDate: '2026-01-15', endTime: '10:00' })).status, 200);
+    const cleared = (await owner.put(`${E}/${multi.body.id}`).send({ endDate: null, endTime: null })).body;
+    assert.deepEqual([cleared.endDate, cleared.endTime], [null, null]);
+    // A copy is just a new entry carrying the same fields.
+    const copy = await entry(nb, { date: '2026-02-02', time: '14:30', endDate: '2026-02-03', endTime: '09:00' });
+    assert.deepEqual([copy.body.time, copy.body.endDate, copy.body.endTime], ['14:30', '2026-02-03', '09:00']);
+    // Yearly: the next occurrence's end is shifted by the same number of days.
+    await entry(nb, { kind: 'date', date: '2020-03-10', endDate: '2020-03-12', title: 'Trip', repeatYearly: true });
+    const up = (await owner.get(`${NB}/${nb}/upcoming?today=2026-03-09&days=5`)).body;
+    assert.deepEqual([up[0].nextDate, up[0].nextEndDate, up[0].endDate], ['2026-03-10', '2026-03-12', '2020-03-12']);
+  });
+
   it('entries and filters: edit, disable, delete, names, search', async () => {
     const a = await linked();
     const id = (await entry(a.id, { message: 'Bring the receipt', fromName: 'Ammi', toName: 'Me', projectId: 'proj', important: true })).body.id;
@@ -115,6 +222,83 @@ describe('notebooks API', () => {
     assert.equal((await entry(a.id, { extra: 1 })).status, 400);
     assert.equal((await owner.delete(`${U}/entries/${id}`)).status, 200);
     assert.equal((await owner.delete(`${U}/entries/${id}`)).status, 404);
+  });
+
+  it('a locked entry cannot be edited, disabled or deleted until unlocked; only editors lock', async () => {
+    const a = await linked('Family');
+    const U = `${NB}/${a.id}/entries`;
+    const made = await entry(a.id, { title: 'Keep' }, editor);
+    assert.equal(made.body.locked, false);
+    const id = made.body.id;
+    assert.equal((await viewer.put(`${U}/${id}`).send({ locked: true })).status, 403);
+    const lockedRes = await editor.put(`${U}/${id}`).send({ locked: true });
+    assert.equal(lockedRes.status, 200); assert.equal(lockedRes.body.locked, true);
+    for (const res of [await editor.put(`${U}/${id}`).send({ title: 'No' }), await editor.put(`${U}/${id}`).send({ active: false }), await editor.put(`${U}/${id}`).send({ locked: false, title: 'No' }), await editor.delete(`${U}/${id}`)]) {
+      assert.equal(res.status, 409); assert.equal(res.body.error, 'This entry is locked. Unlock it first.');
+    }
+    assert.equal((await viewer.put(`${U}/${id}`).send({ locked: false })).status, 403);
+    assert.equal((await owner.get(U)).body.find(n => n.id === id).title, 'Keep');
+    assert.equal((await editor.put(`${U}/${id}`).send({ locked: false })).body.locked, false);
+    assert.equal((await editor.put(`${U}/${id}`).send({ title: 'Yes' })).body.title, 'Yes');
+    // A copy of a locked entry is unlocked (create without locked), and an entry can be created locked.
+    assert.equal((await entry(a.id, { title: 'Copy' }, editor)).body.locked, false);
+    assert.equal((await entry(a.id, { title: 'Born', locked: true }, editor)).body.locked, true);
+    assert.equal((await editor.delete(`${U}/${id}`)).status, 200);
+  });
+
+  it('a locked notebook or category is read only until unlocked; only editors lock', async () => {
+    const nb = await linked('Family');
+    const cat = (await owner.post(`${NB}/${nb.id}/categories`).send({ name: 'Mum' })).body;
+    const other = (await owner.post(`${NB}/${nb.id}/categories`).send({ name: 'Dad' })).body;
+    assert.equal(cat.locked, false);
+    const inCat = (await entry(nb.id, { categoryId: cat.id })).body;
+    const free = (await entry(nb.id, { title: 'Loose' })).body;
+    assert.equal(inCat.effectiveLocked, false);
+    // Category lock: viewer refused, editor allowed.
+    assert.equal((await viewer.put(`${NB}/${nb.id}/categories/${cat.id}`).send({ locked: true })).status, 403);
+    assert.equal((await editor.put(`${NB}/${nb.id}/categories/${cat.id}`).send({ locked: true })).body.locked, true);
+    const e = (await owner.get(`${NB}/${nb.id}/entries`)).body;
+    assert.equal(e.find(x => x.id === inCat.id).effectiveLocked, true);
+    assert.equal(e.find(x => x.id === inCat.id).locked, false);
+    assert.equal(e.find(x => x.id === free.id).effectiveLocked, false);
+    const CAT = 'This category is locked. Unlock it first.';
+    for (const res of [
+      await owner.put(`${NB}/${nb.id}/entries/${inCat.id}`).send({ title: 'x' }),
+      await owner.put(`${NB}/${nb.id}/entries/${inCat.id}`).send({ active: false }),
+      await owner.delete(`${NB}/${nb.id}/entries/${inCat.id}`),
+      await entry(nb.id, { categoryId: cat.id }),
+      await owner.put(`${NB}/${nb.id}/entries/${free.id}`).send({ categoryId: cat.id }), // moving in
+      await owner.put(`${NB}/${nb.id}/entries/${inCat.id}`).send({ categoryId: other.id }), // moving out
+      await owner.put(`${NB}/${nb.id}/categories/${cat.id}`).send({ name: 'Renamed' }),
+      await owner.delete(`${NB}/${nb.id}/categories/${cat.id}`)
+    ]) { assert.equal(res.status, 409); assert.equal(res.body.error, CAT); }
+    assert.equal((await owner.put(`${NB}/${nb.id}/entries/${free.id}`).send({ title: 'Other category is fine' })).status, 200);
+    assert.equal((await owner.put(`${NB}/${nb.id}/categories/${cat.id}`).send({ locked: false })).body.locked, false);
+    assert.equal((await owner.put(`${NB}/${nb.id}/entries/${inCat.id}`).send({ title: 'Edited' })).status, 200);
+
+    // Notebook lock.
+    assert.equal((await viewer.put(`${NB}/${nb.id}`).send({ locked: true })).status, 403);
+    const locked = (await editor.put(`${NB}/${nb.id}`).send({ locked: true })).body;
+    assert.equal(locked.locked, true);
+    assert.equal((await owner.get(NB)).body.find(n => n.id === nb.id).locked, true);
+    assert.equal((await owner.get(`${NB}/${nb.id}/entries`)).body.every(x => x.effectiveLocked), true);
+    const NBL = 'This notebook is locked. Unlock it first.';
+    for (const res of [
+      await entry(nb.id),
+      await owner.put(`${NB}/${nb.id}/entries/${free.id}`).send({ title: 'x' }),
+      await owner.put(`${NB}/${nb.id}/entries/${free.id}`).send({ active: false }),
+      await owner.delete(`${NB}/${nb.id}/entries/${free.id}`),
+      await owner.post(`${NB}/${nb.id}/categories`).send({ name: 'New' }),
+      await owner.put(`${NB}/${nb.id}/categories/${cat.id}`).send({ locked: true }),
+      await owner.delete(`${NB}/${nb.id}/categories/${cat.id}`),
+      await owner.put(`${NB}/${nb.id}`).send({ name: 'Renamed' }),
+      await owner.put(`${NB}/${nb.id}`).send({ extraLedgerIds: ['personal'] }),
+      await owner.delete(`${NB}/${nb.id}`)
+    ]) { assert.equal(res.status, 409); assert.equal(res.body.error, NBL); }
+    assert.equal((await owner.get(`${NB}/${nb.id}/entries`)).status, 200);
+    assert.equal((await owner.put(`${NB}/${nb.id}`).send({ locked: false })).body.locked, false);
+    assert.equal((await entry(nb.id)).status, 201);
+    assert.equal((await owner.delete(`${NB}/${nb.id}`)).status, 200);
   });
 
   it('categories inside a notebook, important dates and upcoming', async () => {

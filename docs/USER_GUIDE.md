@@ -535,6 +535,10 @@ Entries can also link to a project when the notebook is linked to a ledger. **Di
 
 **Categories** are a person or a topic, such as "Family" or "Car". Type a new name in the Category box of any entry and it is created for you, or use **New category**. Each name is used once ("car", "Car" and "CAR" are the same category, and extra spaces are dropped). Open a category to see its **main note** at the top and all its dates and notes as a timeline (oldest first, or switch to newest first). **Add date** and **Add note** on that page start with the category already chosen. Deleting a category keeps its entries; they just have no category.
 
+**Times, zones and locks.** The date box also holds an optional **time** (one box for date and time), and an entry can have an **end** date and time, which makes it a duration; an end before the start is refused. Entries without a time come first within their day. Each entry resolves its **time zone** as its own, then its category's, then its notebook's, then the ledger's (set by an Admin in **Settings › Time zone**; your browser's zone until one is saved). The form starts on the inherited zone ("Inherited ... from category") and stores nothing unless you pick one. When the zone differs from yours, the entry's dialog ends with one small line such as "Set in Karachi time · 18:57 in Stockholm (4 h earlier)". An editor can **lock** an entry, a category or a notebook (from the category or notebook header, or the entry's edit form): it cannot be changed or deleted until unlocked, it opens in the read-only dialog, and cards show only a small padlock.
+
+**How entries look.** Important dates are compact two-line tiles (title, then the exact date and time, a countdown and an "off" marker if disabled); notes stay cards. A notebook with categories opens grouped by category. The dialog has a shaded header with the title (a star for important, a repeat icon for a yearly date) and small tags for locked and category.
+
 The Notebook page has two views:
 
 - **Categories**: one card per category with its counts and the next date coming up.
@@ -559,7 +563,7 @@ The Reports page uses the same look as Settings (pill tabs, full width) and is i
 
 ## 10. Settings
 
-Settings has ten tabs in two groups. **Ledger setup** holds the records everyone on the ledger shares. **Display** holds how the app looks. The tables show who can change each tab. On a wide screen the boxes in a tab sit side by side; on a phone they stack, one under the other.
+Settings has eleven tabs in two groups. **Ledger setup** holds the records everyone on the ledger shares. **Display** holds how the app looks. The tables show who can change each tab. On a wide screen the boxes in a tab sit side by side; on a phone they stack, one under the other.
 
 ### Ledger setup
 
@@ -580,6 +584,7 @@ Settings has ten tabs in two groups. **Ledger setup** holds the records everyone
 | --- | --- | --- |
 | **Appearance** | Admin sets the ledger default. Everyone sets their own. | The colour palette and the list layout. See **Appearance** below. |
 | **Dashboard** | Everyone | How the Dashboard shows its amounts (List, Pie, Bars or Graph). See section 5. |
+| **Time zone** | Admin (others read) | The ledger's application time zone, used by Notebook entries that have no zone of their own. |
 
 Notes:
 

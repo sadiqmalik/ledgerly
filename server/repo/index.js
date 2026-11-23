@@ -7,6 +7,7 @@ const { createBooksRepo } = require('./books');
 const { createItemsRepo } = require('./items');
 const optional = require('../optionalModules');
 const { createAppearanceRepo } = require('./appearance');
+const { createTimeZoneRepo } = require('./timezone');
 const { createEntryCountsRepo } = require('./entryCounts');
 const { createLoansRepo } = require('./loans');
 const { createCurrenciesRepo } = require('./currencies');
@@ -23,6 +24,7 @@ const createRepo = db => {
     books: createBooksRepo(db, authStore),
     items: createItemsRepo(ledger),
     appearance: createAppearanceRepo(db),
+    timeZone: createTimeZoneRepo(db),
     entryCounts: createEntryCountsRepo(db),
     loans: createLoansRepo(db),
     currencies: createCurrenciesRepo(db),

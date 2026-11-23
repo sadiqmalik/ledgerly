@@ -2,6 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import dataAPI, { api } from '../services/dataAPI';
 import { useAuth } from '../auth/AuthContext';
 import { roleFor } from '../auth/roles';
+import { browserZone } from '../utils/timeZones';
 import { canReadLookups, canReadParties, canReadYears, hasResource, forBook } from '../auth/resources.mjs';
 
 const LedgerContext = createContext(null);
@@ -16,6 +17,7 @@ export function LedgerProvider({ book, children }) {
   const [quickAdd, setQuickAdd] = useState(null); // null or { preset }
   const [profitOpen, setProfitOpen] = useState(false); // the separate Profit entry dialog
   const [closedYears, setClosedYears] = useState(() => new Set());
+  const [ledgerZone, setLedgerZone] = useState(null); // the ledger's application time zone; null until set (then the browser's)
 
   const pages = forBook(account, book.id); // this ledger's own page list, when it has one
   const role = book.role || roleFor(account, book.id);
@@ -53,6 +55,12 @@ export function LedgerProvider({ book, children }) {
   useEffect(() => { setClosedYears(new Set()); refreshYears(); }, [refreshYears]);
   const isClosedDate = useCallback(date => /^\d{4}/.test(date || '') && closedYears.has(Number(String(date).slice(0, 4))), [closedYears]);
 
+  const refreshTimeZone = useCallback(async () => {
+    try { setLedgerZone((await api.get(`/books/${book.id}/timezone`)).data?.timeZone || null); } catch { /* keep the previous value */ }
+  }, [book.id]);
+  useEffect(() => { setLedgerZone(null); refreshTimeZone(); }, [refreshTimeZone]);
+  const timeZone = ledgerZone || browserZone();
+
   const notifyChanged = useCallback(() => setVersion(v => v + 1), []);
   const openQuickAdd = useCallback((preset = 'Remittance') => { if (canQuickAdd) setQuickAdd({ preset }); }, [canQuickAdd]);
   const closeQuickAdd = useCallback(() => setQuickAdd(null), []);
@@ -76,9 +84,9 @@ export function LedgerProvider({ book, children }) {
 
   const value = useMemo(() => ({
     book, role, canEdit, canQuickAdd, can: key => hasResource(pages, key), funds, categories, parties, version, quickAdd, profitOpen, openProfit, closeProfit,
-    notifyChanged, openQuickAdd, closeQuickAdd, closedYears, isClosedDate, refreshYears,
+    notifyChanged, openQuickAdd, closeQuickAdd, closedYears, isClosedDate, refreshYears, timeZone, refreshTimeZone,
     fundById: id => funds.find(f => f.id === id)
-  }), [book, account, role, canEdit, canQuickAdd, funds, categories, parties, version, quickAdd, profitOpen, openProfit, closeProfit, notifyChanged, openQuickAdd, closeQuickAdd, closedYears, isClosedDate, refreshYears]);
+  }), [book, account, role, canEdit, canQuickAdd, funds, categories, parties, version, quickAdd, profitOpen, openProfit, closeProfit, notifyChanged, openQuickAdd, closeQuickAdd, closedYears, isClosedDate, refreshYears, timeZone, refreshTimeZone]);
 
   return <LedgerContext.Provider value={value}>{children}</LedgerContext.Provider>;
 }

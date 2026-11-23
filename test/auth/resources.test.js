@@ -44,6 +44,7 @@ const MATRIX = [
   ['put', '/profit/rates/2020-01', ['ledger', 'settings']],
   ['delete', '/profit/rates/2020-01', ['settings']],
   ['put', '/appearance', ['settings']],
+  ['put', '/timezone', ['settings']],
   ['get', '/entry-counts', ['settings']],
   ['post', '/entry-counts', []],
   ['get', '/nothing-here', []]

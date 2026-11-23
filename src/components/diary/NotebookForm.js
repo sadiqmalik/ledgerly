@@ -8,6 +8,7 @@ import MultiSelect from '../common/MultiSelect';
 import ConfirmDialog from '../common/ConfirmDialog';
 import { errorMessage } from '../common/format';
 import { inputCls, btnPrimary, btnSecondary, btnDanger, Field } from '../settings/ui';
+import { useAppZone, inheritedFrom, ZoneSelect } from './shared';
 
 // Create (notebook null) or edit a notebook. It can be linked to one ledger, which then decides who can use it (the
 // ledger's members with the Notebook page; Viewer reads, Editor and Admin change), or to none, which keeps it private to
@@ -16,8 +17,9 @@ export default function NotebookForm({ notebook, onClose, onSaved, onDeleted }) 
   const { account } = useAuth();
   const { books, book: openBook } = useBooks();
   const isSuper = Boolean(account?.isSuperAdmin);
+  const inherited = inheritedFrom([], useAppZone());
   const choices = books.filter(b => b.active !== false && (isSuper || ['editor', 'admin'].includes(b.role)));
-  const [f, setF] = useState({ name: notebook?.name || '', description: notebook?.description || '', extra: (notebook?.ledgerIds || []).slice(1), bookId: notebook ? (notebook.bookId || '') : (choices.find(b => b.id === openBook?.id)?.id || (isSuper ? '' : (choices[0]?.id || ''))) });
+  const [f, setF] = useState({ name: notebook?.name || '', description: notebook?.description || '', timeZone: notebook?.timeZone || '', extra: (notebook?.ledgerIds || []).slice(1), bookId: notebook ? (notebook.bookId || '') : (choices.find(b => b.id === openBook?.id)?.id || (isSuper ? '' : (choices[0]?.id || ''))) });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [confirm, setConfirm] = useState(false);
@@ -36,7 +38,7 @@ export default function NotebookForm({ notebook, onClose, onSaved, onDeleted }) 
     if (!f.bookId && !isSuper) { setError('Choose a ledger.'); return; }
     setBusy(true);
     try {
-      const body = { name: f.name.trim(), description: f.description.trim() || null, ...(canLink ? { bookId: f.bookId || null } : {}), ...(canShare && f.bookId ? { extraLedgerIds: f.extra.filter(x => x !== f.bookId) } : {}) };
+      const body = { name: f.name.trim(), description: f.description.trim() || null, timeZone: f.timeZone || null, ...(canLink ? { bookId: f.bookId || null } : {}), ...(canShare && f.bookId ? { extraLedgerIds: f.extra.filter(x => x !== f.bookId) } : {}) };
       const r = notebook ? await api.put(`/diary/notebooks/${notebook.id}`, body) : await api.post('/diary/notebooks', body);
       onSaved(r.data);
     } catch (err) { setError(errorMessage(err)); setBusy(false); }
@@ -52,6 +54,7 @@ export default function NotebookForm({ notebook, onClose, onSaved, onDeleted }) 
         {error && <p role="alert" className="text-sm text-negative">{error}</p>}
         <Field label="Name"><input className={inputCls} value={f.name} onChange={e => setF(s => ({ ...s, name: e.target.value }))} required maxLength={80} autoFocus placeholder="For example Family or Car" /></Field>
         <Field label="Description (optional)"><textarea rows={3} className={inputCls} value={f.description} onChange={e => setF(s => ({ ...s, description: e.target.value }))} maxLength={2000} /></Field>
+        <Field label="Time zone"><ZoneSelect value={f.timeZone} onChange={v => setF(s => ({ ...s, timeZone: v }))} inherited={inherited} disabled={busy || viewOnly} /></Field>
         <Field label="Linked ledger">
           <Select className={inputCls} value={f.bookId} onChange={e => setF(s => ({ ...s, bookId: e.target.value, extra: s.extra.filter(x => x !== e.target.value) }))} disabled={!canLink || viewOnly || busy} aria-label="Linked ledger">
             {isSuper && <option value="">No ledger (only I can see it)</option>}

@@ -11,26 +11,30 @@ const { RANK, roleFor, notebookRuleOf, notebookAllowed } = require('../../server
 const { ConflictError, ForbiddenError, AppError } = require('../../server/errors');
 
 const text = max => z.string().trim().max(max);
+const noteTime = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'must be HH:MM (24-hour)');
+// A real IANA zone name such as 'Europe/Stockholm'; the runtime's Intl knows the list.
+const isZone = v => { try { new Intl.DateTimeFormat('en', { timeZone: v }); return true; } catch { return false; } };
+const zone = z.string().trim().min(1).max(64).refine(isZone, 'must be an IANA time zone, for example Europe/Stockholm');
 const fields = {
-  date: isoDate, title: text(200).min(1), message: text(8000).nullable(),
+  date: isoDate, time: noteTime.nullable(), timeZone: zone.nullable(), endDate: isoDate.nullable(), endTime: noteTime.nullable(), title: text(200).min(1), message: text(8000).nullable(),
   fromName: text(120).nullable(), toName: text(120).nullable(), projectId: id.nullable(),
-  important: flag, active: flag, categoryId: id.nullable(), kind: z.enum(['note', 'date']), repeatYearly: flag
+  important: flag, active: flag, categoryId: id.nullable(), kind: z.enum(['note', 'date']), repeatYearly: flag, locked: flag
 };
 const COLS = {
-  date: 'date', title: 'title', message: 'message', fromName: 'from_name', toName: 'to_name', projectId: 'project_id',
-  important: 'important', active: 'active', categoryId: 'category_id', kind: 'kind', repeatYearly: 'repeat_yearly'
+  date: 'date', time: 'note_time', timeZone: 'time_zone', endDate: 'end_date', endTime: 'end_time', title: 'title', message: 'message', fromName: 'from_name', toName: 'to_name', projectId: 'project_id',
+  important: 'important', active: 'active', categoryId: 'category_id', kind: 'kind', repeatYearly: 'repeat_yearly', locked: 'locked'
 };
 const createSchema = z.object({
-  date: fields.date, title: fields.title, message: fields.message.optional(), fromName: fields.fromName.optional(),
+  date: fields.date, time: fields.time.optional(), timeZone: fields.timeZone.optional(), endDate: fields.endDate.optional(), endTime: fields.endTime.optional(), title: fields.title, message: fields.message.optional(), fromName: fields.fromName.optional(),
   toName: fields.toName.optional(), projectId: fields.projectId.optional(), important: fields.important.optional(),
-  categoryId: fields.categoryId.optional(), kind: fields.kind.optional(), repeatYearly: fields.repeatYearly.optional()
+  categoryId: fields.categoryId.optional(), kind: fields.kind.optional(), repeatYearly: fields.repeatYearly.optional(), locked: fields.locked.optional()
 }).strict();
 const updateSchema = z.object(Object.fromEntries(Object.entries(fields).map(([k, v]) => [k, v.optional()]))).strict();
-const categorySchema = z.object({ name: text(80).min(1), description: text(2000).nullable().optional() }).strict();
-const categoryUpdateSchema = z.object({ name: text(80).min(1).optional(), description: text(2000).nullable().optional() }).strict();
+const categorySchema = z.object({ name: text(80).min(1), description: text(2000).nullable().optional(), timeZone: zone.nullable().optional() }).strict();
+const categoryUpdateSchema = z.object({ name: text(80).min(1).optional(), description: text(2000).nullable().optional(), timeZone: zone.nullable().optional(), locked: flag.optional() }).strict();
 const extraIds = z.array(id).max(50);
-const notebookSchema = z.object({ name: text(80).min(1), description: text(2000).nullable().optional(), bookId: id.nullable().optional(), extraLedgerIds: extraIds.optional() }).strict();
-const notebookUpdateSchema = z.object({ name: text(80).min(1).optional(), description: text(2000).nullable().optional(), bookId: id.nullable().optional(), extraLedgerIds: extraIds.optional() }).strict();
+const notebookSchema = z.object({ name: text(80).min(1), description: text(2000).nullable().optional(), bookId: id.nullable().optional(), extraLedgerIds: extraIds.optional(), timeZone: zone.nullable().optional() }).strict();
+const notebookUpdateSchema = z.object({ name: text(80).min(1).optional(), description: text(2000).nullable().optional(), bookId: id.nullable().optional(), extraLedgerIds: extraIds.optional(), timeZone: zone.nullable().optional(), locked: flag.optional() }).strict();
 const upcomingQuery = z.object({ days: z.coerce.number().int().min(1).max(366).optional(), today: isoDate.optional(), category: z.string().optional() });
 const listQuery = z.object({
   project: z.string().optional(), q: z.string().trim().max(200).optional(), from: isoDate.optional(), to: isoDate.optional(),
@@ -39,15 +43,33 @@ const listQuery = z.object({
   category: z.string().optional(), kind: z.enum(['note', 'date']).optional()
 });
 
+const LOCKED = 'This entry is locked. Unlock it first.';
+const NB_LOCKED = 'This notebook is locked. Unlock it first.';
+const CAT_LOCKED = 'This category is locked. Unlock it first.';
 const likeEscape = s => s.replace(/[\\%_]/g, m => `\\${m}`);
+// Own zone, else the category's, else the notebook's; null when none is set (the client then uses the application zone).
+const resolveZone = r => {
+  const [zone, from] = r.time_zone ? [r.time_zone, 'entry'] : r.category_time_zone ? [r.category_time_zone, 'category'] : r.notebook_time_zone ? [r.notebook_time_zone, 'notebook'] : [null, null];
+  return { resolvedTimeZone: zone, timeZoneFrom: from };
+};
 const map = r => ({
-  id: r.id, notebookId: r.notebook_id, date: r.date, title: r.title, message: r.message, fromName: r.from_name, toName: r.to_name,
+  id: r.id, notebookId: r.notebook_id, date: r.date, time: r.note_time || null, timeZone: r.time_zone || null, ...resolveZone(r), endDate: r.end_date || (r.end_time ? r.date : null), endTime: r.end_time || null, title: r.title, message: r.message, fromName: r.from_name, toName: r.to_name,
   projectId: r.project_id, projectName: r.project_name, categoryId: r.category_id, categoryName: r.category_name,
-  kind: r.kind, repeatYearly: r.repeat_yearly === 1, important: r.important === 1, active: r.active === 1,
+  kind: r.kind, repeatYearly: r.repeat_yearly === 1, important: r.important === 1, active: r.active === 1, locked: r.locked === 1,
+  effectiveLocked: r.locked === 1 || r.category_locked === 1 || r.notebook_locked === 1,
   createdAt: r.created_at, updatedAt: r.updated_at
 });
-const SELECT = `SELECT n.*, p.name AS project_name, c.name AS category_name FROM diary_notes n
-  LEFT JOIN projects p ON p.id = n.project_id AND p.book_id = n.book_id LEFT JOIN diary_categories c ON c.id = n.category_id`;
+// The end must not be before the start: compare the date, then the time (when both have one); equal is fine. An end
+// time without an end date is on the start day.
+const checkSpan = ({ date, time, endDate, endTime }) => {
+  const end = endDate || (endTime ? date : null);
+  if (!end) return;
+  if (end < date || (end === date && time && endTime && endTime < time)) throw new AppError('The end cannot be before the start', 400);
+};
+const addDays = (d, n) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
+// Ordering stays by the stored date, then the wall-clock time, whatever each entry's time zone is (zones are not converted here).
+const SELECT = `SELECT n.*, p.name AS project_name, c.name AS category_name, c.locked AS category_locked, nbk.locked AS notebook_locked, c.time_zone AS category_time_zone, nbk.time_zone AS notebook_time_zone FROM diary_notes n
+  LEFT JOIN projects p ON p.id = n.project_id AND p.book_id = n.book_id LEFT JOIN diary_categories c ON c.id = n.category_id LEFT JOIN diary_notebooks nbk ON nbk.id = n.notebook_id`;
 
 // The next time a dated entry comes round on or after today (YYYY-MM-DD strings): a yearly one repeats on its month
 // and day (29 February falls on 28 February in other years), a one-off is its own date or nothing.
@@ -126,16 +148,16 @@ const registerDiaryRoutes = (app, { repo }) => {
       const keep = ids.filter(x => mine.has(x));
       const main = mine.has(nb.book_id) ? nb.book_id : (keep[0] ?? null);
       return {
-        id: nb.id, name: nb.name, description: nb.description, bookId: main, mainLedgerId: main, bookName: main ? nameOf(main) : null,
+        id: nb.id, name: nb.name, description: nb.description, timeZone: nb.time_zone || null, bookId: main, mainLedgerId: main, bookName: main ? nameOf(main) : null,
         ledgerIds: keep, ledgerNames: keep.map(x => nameOf(x) ?? x),
-        canEdit: r.canEdit, canDelete: r.canDelete, canRelink: r.canRelink, canShare: !!r.canShare, isOwner: r.isOwner, createdAt: nb.created_at, updatedAt: nb.updated_at,
+        canEdit: r.canEdit, canDelete: r.canDelete, canRelink: r.canRelink, canShare: !!r.canShare, isOwner: r.isOwner, locked: nb.locked === 1, createdAt: nb.created_at, updatedAt: nb.updated_at,
         noteCount: counts.note || 0, dateCount: counts.date || 0, categoryCount: counts.categories || 0
       };
     }
     return {
-      id: nb.id, name: nb.name, description: nb.description, bookId: nb.book_id, mainLedgerId: nb.book_id, bookName: nb.book_name ?? null,
+      id: nb.id, name: nb.name, description: nb.description, timeZone: nb.time_zone || null, bookId: nb.book_id, mainLedgerId: nb.book_id, bookName: nb.book_name ?? null,
       ledgerIds: ids, ledgerNames: ids.map((x, i) => (i === 0 ? nb.book_name : shares?.books.get(x)?.name) ?? x),
-      canEdit: r.canEdit, canDelete: r.canDelete, canRelink: r.canRelink, canShare: !!r.canShare, isOwner: r.isOwner, createdAt: nb.created_at, updatedAt: nb.updated_at,
+      canEdit: r.canEdit, canDelete: r.canDelete, canRelink: r.canRelink, canShare: !!r.canShare, isOwner: r.isOwner, locked: nb.locked === 1, createdAt: nb.created_at, updatedAt: nb.updated_at,
       noteCount: counts.note || 0, dateCount: counts.date || 0, categoryCount: counts.categories || 0
     };
   };
@@ -169,7 +191,16 @@ const registerDiaryRoutes = (app, { repo }) => {
     const dup = await L.first('SELECT id FROM diary_categories WHERE notebook_id = ? AND LOWER(name) = ?', nbId, name.toLowerCase());
     if (dup && dup.id !== selfId) throw new ConflictError('A category with this name already exists');
   };
-  const mapCategory = (r, stats = {}) => ({ id: r.id, name: r.name, description: r.description, createdAt: r.created_at, updatedAt: r.updated_at, noteCount: 0, dateCount: 0, nextDate: null, nextDaysAway: null, ...stats });
+  // A locked notebook refuses every write inside it; a locked category refuses writes to it and to its entries.
+  const guardNotebook = nb => { if (nb.locked === 1) throw new AppError(NB_LOCKED, 409); };
+  const guardCategory = async (nbId, ...cids) => {
+    for (const cid of new Set(cids.filter(Boolean))) {
+      const cat = await getCategory(nbId, cid);
+      if (cat && cat.locked === 1) throw new AppError(CAT_LOCKED, 409);
+    }
+  };
+  const onlyLocked = data => Object.keys(data).every(k => k === 'locked');
+  const mapCategory = (r, stats = {}) => ({ id: r.id, name: r.name, description: r.description, timeZone: r.time_zone || null, locked: r.locked === 1, createdAt: r.created_at, updatedAt: r.updated_at, noteCount: 0, dateCount: 0, nextDate: null, nextDaysAway: null, ...stats });
   const idFilter = (raw, column, where, params) => {
     const ids = raw.split(',').filter(Boolean).slice(0, 100);
     const real = ids.filter(x => x !== 'none');
@@ -227,8 +258,8 @@ const registerDiaryRoutes = (app, { repo }) => {
     const nid = crypto.randomUUID();
     const at = now();
     await repo.ledger.batch([
-      L.run('INSERT INTO diary_notebooks (id, owner_id, book_id, name, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        nid, account.id, data.bookId || null, data.name, data.description || null, at, at),
+      L.run('INSERT INTO diary_notebooks (id, owner_id, book_id, name, description, time_zone, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        nid, account.id, data.bookId || null, data.name, data.description || null, data.timeZone || null, at, at),
       ...extraRows(nid, extras, at)
     ]);
     const nb = await L.first(`${NB_SELECT} WHERE n.id = ?`, nid);
@@ -239,6 +270,7 @@ const registerDiaryRoutes = (app, { repo }) => {
   app.put(`${root}/:n`, async c => {
     const { account, nb, r, shares } = await open(c, { edit: true });
     const data = parse(notebookUpdateSchema, c.get('body'));
+    if (nb.locked === 1 && !onlyLocked(data)) throw new AppError(NB_LOCKED, 409);
     let bookId = nb.book_id;
     if (data.bookId !== undefined && (data.bookId || null) !== nb.book_id) {
       if (!r.canRelink) throw new ForbiddenError('Only a super administrator or an Admin of its ledger can move it to another ledger');
@@ -261,8 +293,8 @@ const registerDiaryRoutes = (app, { repo }) => {
     const extrasChanged = extras.length !== current.length || extras.some((x, i) => x !== current[i]);
     const at = now();
     await repo.ledger.batch([
-      L.run('UPDATE diary_notebooks SET name = ?, description = ?, book_id = ?, updated_at = ? WHERE id = ?',
-        data.name ?? nb.name, data.description === undefined ? nb.description : (data.description || null), bookId, at, nb.id),
+      L.run('UPDATE diary_notebooks SET name = ?, description = ?, book_id = ?, time_zone = ?, locked = ?, updated_at = ? WHERE id = ?',
+        data.name ?? nb.name, data.description === undefined ? nb.description : (data.description || null), bookId, data.timeZone === undefined ? nb.time_zone : (data.timeZone || null), data.locked === undefined ? nb.locked : (data.locked ? 1 : 0), at, nb.id),
       // Entries keep the notebook's ledger (a notebook with no ledger uses an empty one), and lose project links of the old one.
       L.run('UPDATE diary_notes SET book_id = ? WHERE notebook_id = ?', bookId || '', nb.id),
       ...(bookId !== nb.book_id ? [L.run('UPDATE diary_notes SET project_id = NULL WHERE notebook_id = ?', nb.id)] : []),
@@ -277,6 +309,7 @@ const registerDiaryRoutes = (app, { repo }) => {
   app.delete(`${root}/:n`, async c => {
     const { nb, r } = await open(c, { edit: true });
     if (!r.canDelete) throw new ForbiddenError('Only the notebook owner or a ledger admin can delete it');
+    guardNotebook(nb);
     await repo.ledger.batch([
       L.run('DELETE FROM diary_notes WHERE notebook_id = ?', nb.id),
       L.run('DELETE FROM diary_categories WHERE notebook_id = ?', nb.id),
@@ -308,7 +341,8 @@ const registerDiaryRoutes = (app, { repo }) => {
       const like = `%${likeEscape(f.q.toLowerCase())}%`;
       add(`(${['title', 'message', 'from_name', 'to_name'].map(k => `LOWER(n.${k}) LIKE ? ESCAPE '\\'`).join(' OR ')})`, like, like, like, like);
     }
-    const rows = await L.all(`${SELECT} WHERE ${where.join(' AND ')} ORDER BY n.date DESC, n.created_at DESC, n.id DESC`, ...params);
+    // Within one day entries run by time of day; entries without a time come first.
+    const rows = await L.all(`${SELECT} WHERE ${where.join(' AND ')} ORDER BY n.date DESC, COALESCE(n.note_time, '') ASC, n.created_at DESC, n.id DESC`, ...params);
     return c.json(rows.map(map));
   });
 
@@ -326,9 +360,9 @@ const registerDiaryRoutes = (app, { repo }) => {
       const next = nextOccurrence(r.date, r.repeat_yearly === 1, today);
       if (!next) continue;
       const away = daysBetween(today, next);
-      if (away <= days) out.push({ ...map(r), nextDate: next, daysAway: away, years: r.repeat_yearly === 1 ? Number(next.slice(0, 4)) - Number(r.date.slice(0, 4)) : null });
+      if (away <= days) out.push({ ...map(r), nextDate: next, nextEndDate: map(r).endDate ? addDays(next, daysBetween(r.date, map(r).endDate)) : null, daysAway: away, years: r.repeat_yearly === 1 ? Number(next.slice(0, 4)) - Number(r.date.slice(0, 4)) : null });
     }
-    out.sort((x, y) => x.nextDate.localeCompare(y.nextDate) || x.title.localeCompare(y.title));
+    out.sort((x, y) => x.nextDate.localeCompare(y.nextDate) || (x.time || '').localeCompare(y.time || '') || x.title.localeCompare(y.title));
     return c.json(out);
   });
 
@@ -343,18 +377,21 @@ const registerDiaryRoutes = (app, { repo }) => {
 
   app.post(`${root}/:n/entries`, async c => {
     const { account, nb } = await open(c, { edit: true });
+    guardNotebook(nb);
     const data = parse(createSchema, c.get('body'));
+    await guardCategory(nb.id, data.categoryId);
     await checkProject(nb, data.projectId);
     await checkCategory(nb.id, data.categoryId);
+    checkSpan(data);
     const kind = data.kind || 'note';
     const eid = crypto.randomUUID();
     const at = now();
     await L.run(
-      `INSERT INTO diary_notes (id, book_id, notebook_id, date, title, message, from_name, to_name, project_id, category_id, kind, repeat_yearly, important, active, created_by, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
-      eid, nb.book_id || '', nb.id, data.date, data.title, data.message || null, data.fromName || null, data.toName || null,
+      `INSERT INTO diary_notes (id, book_id, notebook_id, date, note_time, time_zone, end_date, end_time, title, message, from_name, to_name, project_id, category_id, kind, repeat_yearly, important, active, locked, created_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)`,
+      eid, nb.book_id || '', nb.id, data.date, data.time || null, data.timeZone || null, data.endDate || null, data.endTime || null, data.title, data.message || null, data.fromName || null, data.toName || null,
       data.projectId || null, data.categoryId || null, kind, kind === 'date' && data.repeatYearly ? 1 : 0,
-      data.important ? 1 : 0, account.id, at, at).run();
+      data.important ? 1 : 0, data.locked ? 1 : 0, account.id, at, at).run();
     return c.json(map(await L.first(`${SELECT} WHERE n.id = ?`, eid)), 201);
   });
 
@@ -367,8 +404,16 @@ const registerDiaryRoutes = (app, { repo }) => {
   app.put(`${root}/:n/entries/:id`, async c => {
     const { nb } = await open(c, { edit: true });
     const eid = c.req.param('id');
-    await getEntry(nb, eid);
+    const row = await getEntry(nb, eid);
     const data = parse(updateSchema, c.get('body'));
+    const has = k => data[k] !== undefined;
+    guardNotebook(nb);
+    await guardCategory(nb.id, row.category_id, data.categoryId);
+    if (row.locked === 1 && Object.keys(data).some(k => k !== 'locked')) throw new AppError(LOCKED, 409);
+    checkSpan({
+      date: data.date || row.date, time: has('time') ? data.time : row.note_time,
+      endDate: has('endDate') ? data.endDate : row.end_date, endTime: has('endTime') ? data.endTime : row.end_time
+    });
     await checkProject(nb, data.projectId);
     await checkCategory(nb.id, data.categoryId);
     const keys = Object.keys(data);
@@ -383,7 +428,10 @@ const registerDiaryRoutes = (app, { repo }) => {
 
   app.delete(`${root}/:n/entries/:id`, async c => {
     const { nb } = await open(c, { edit: true });
-    await getEntry(nb, c.req.param('id'));
+    guardNotebook(nb);
+    const entry = await getEntry(nb, c.req.param('id'));
+    await guardCategory(nb.id, entry.category_id);
+    if (entry.locked === 1) throw new AppError(LOCKED, 409);
     await L.run('DELETE FROM diary_notes WHERE id = ? AND notebook_id = ?', c.req.param('id'), nb.id).run();
     return c.json({ success: true });
   });
@@ -409,12 +457,13 @@ const registerDiaryRoutes = (app, { repo }) => {
 
   app.post(`${root}/:n/categories`, async c => {
     const { nb } = await open(c, { edit: true });
+    guardNotebook(nb);
     const data = parse(categorySchema, c.get('body'));
     await checkCategoryName(nb.id, data.name);
     const cid = crypto.randomUUID();
     const at = now();
-    await L.run('INSERT INTO diary_categories (id, book_id, owner_id, notebook_id, name, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      cid, nb.book_id || '', nb.owner_id, nb.id, data.name, data.description || null, at, at).run();
+    await L.run('INSERT INTO diary_categories (id, book_id, owner_id, notebook_id, name, description, time_zone, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      cid, nb.book_id || '', nb.owner_id, nb.id, data.name, data.description || null, data.timeZone || null, at, at).run();
     return c.json(mapCategory(await getCategory(nb.id, cid)), 201);
   });
 
@@ -424,9 +473,11 @@ const registerDiaryRoutes = (app, { repo }) => {
     const row = await getCategory(nb.id, cid);
     if (!row) throw notFound('Category');
     const data = parse(categoryUpdateSchema, c.get('body'));
+    guardNotebook(nb);
+    if (row.locked === 1 && !onlyLocked(data)) throw new AppError(CAT_LOCKED, 409);
     if (data.name) await checkCategoryName(nb.id, data.name, cid);
-    await L.run('UPDATE diary_categories SET name = ?, description = ?, updated_at = ? WHERE id = ? AND notebook_id = ?',
-      data.name ?? row.name, data.description === undefined ? row.description : (data.description || null), now(), cid, nb.id).run();
+    await L.run('UPDATE diary_categories SET name = ?, description = ?, time_zone = ?, locked = ?, updated_at = ? WHERE id = ? AND notebook_id = ?',
+      data.name ?? row.name, data.description === undefined ? row.description : (data.description || null), data.timeZone === undefined ? row.time_zone : (data.timeZone || null), data.locked === undefined ? row.locked : (data.locked ? 1 : 0), now(), cid, nb.id).run();
     return c.json(mapCategory(await getCategory(nb.id, cid)));
   });
 
@@ -434,7 +485,10 @@ const registerDiaryRoutes = (app, { repo }) => {
   app.delete(`${root}/:n/categories/:cid`, async c => {
     const { nb } = await open(c, { edit: true });
     const cid = c.req.param('cid');
-    if (!(await getCategory(nb.id, cid))) throw notFound('Category');
+    const cat = await getCategory(nb.id, cid);
+    if (!cat) throw notFound('Category');
+    guardNotebook(nb);
+    if (cat.locked === 1) throw new AppError(CAT_LOCKED, 409);
     await repo.ledger.batch([
       L.run('UPDATE diary_notes SET category_id = NULL, updated_at = ? WHERE notebook_id = ? AND category_id = ?', now(), nb.id, cid),
       L.run('DELETE FROM diary_categories WHERE id = ? AND notebook_id = ?', cid, nb.id)

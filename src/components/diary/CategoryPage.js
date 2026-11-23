@@ -3,13 +3,13 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../../services/dataAPI';
 import ConfirmDialog from '../common/ConfirmDialog';
 import { errorMessage } from '../common/format';
-import { btnPrimary, btnSecondary, btnDanger, Toggle } from '../settings/ui';
+import { btnSm, btnSmPrimary, btnSmDanger, Toggle } from '../settings/ui';
 import CategoryForm from './CategoryForm';
-import NoteCard from './NoteCard';
-import { whenText, stampText } from './shared';
+import { EntryGrid } from './DateTile';
+import { whenText, stampText, HeaderLock, LockedChip } from './shared';
 
 // One category (a person or a topic such as "Car"): its main note and all its dates and notes as a timeline.
-export default function CategoryPage({ base, nbId, category, canEdit, n, reload, onAdd, onEdit, onDuplicate, onToggleActive, onDeleteNote, upcoming }) {
+export default function CategoryPage({ base, nbId, category, canEdit, notebookLocked = false, notebookZone = null, onToggleLock, n, reload, onAdd, onEdit, onDuplicate, onToggleActive, onDeleteNote, onLock, upcoming }) {
   const [rows, setRows] = useState(null);
   const [error, setError] = useState('');
   const [status, setStatus] = useState('active');
@@ -36,23 +36,25 @@ export default function CategoryPage({ base, nbId, category, canEdit, n, reload,
   };
 
   const sorted = rows ? [...rows].sort((a, b) => (newestFirst ? b.date.localeCompare(a.date) : a.date.localeCompare(b.date)) || a.title.localeCompare(b.title)) : null;
+  const open = canEdit && !notebookLocked && !category.locked; // content of a locked notebook or category is read only
   const countdown = id => upcoming.find(u => u.id === id);
 
   return (
     <section className="min-w-0 space-y-4">
       <a href={`#/diary/${nbId}`} className="text-sm text-muted-foreground underline">&larr; Back to the notebook</a>
       <header className="rounded-xl border border-border bg-card p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="break-words text-xl font-semibold text-foreground">{category.name}</h2>
+            <h2 className="flex flex-wrap items-center gap-2 break-words text-xl font-semibold text-foreground">{category.name}{(category.locked || notebookLocked) && (!canEdit || notebookLocked) && <LockedChip />}</h2>
             {category.description && <p className="mt-2 max-w-prose whitespace-pre-wrap break-words text-sm">{category.description}</p>}
           </div>
           {canEdit && (
-            <div className="flex flex-wrap gap-2">
-              <button type="button" className={btnPrimary} onClick={() => onAdd({ kind: 'date', categoryName: category.name })}>Add date</button>
-              <button type="button" className={btnSecondary} onClick={() => onAdd({ kind: 'note', categoryName: category.name })}>Add note</button>
-              <button type="button" className={btnSecondary} onClick={() => setEditing(true)}>Edit category</button>
-              <button type="button" className={btnDanger} onClick={() => setConfirm(true)}>Delete category</button>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {open && <button type="button" className={btnSmPrimary} onClick={() => onAdd({ kind: 'date', categoryName: category.name })}>Add date</button>}
+              {open && <button type="button" className={btnSm} onClick={() => onAdd({ kind: 'note', categoryName: category.name })}>Add note</button>}
+              {open && <button type="button" className={btnSm} onClick={() => setEditing(true)}>Edit category</button>}
+              {!notebookLocked && <HeaderLock locked={!!category.locked} onToggle={() => onToggleLock(category)} />}
+              {open && <button type="button" className={btnSmDanger} onClick={() => setConfirm(true)}>Delete category</button>}
             </div>
           )}
         </div>
@@ -64,21 +66,14 @@ export default function CategoryPage({ base, nbId, category, canEdit, n, reload,
         <Toggle compact label="Newest first" checked={newestFirst} onChange={setNewestFirst} />
       </div>
       {error && <p role="alert" className="text-sm text-negative">{error}</p>}
-      {sorted && !sorted.length && <p className="text-sm text-muted-foreground">Nothing here yet.{canEdit && ' Use Add date or Add note.'}</p>}
+      {sorted && !sorted.length && <p className="text-sm text-muted-foreground">Nothing here yet.{open && ' Use Add date or Add note.'}</p>}
 
       {!!sorted?.length && (
-        <div className="grid items-stretch gap-3 grid-cols-[repeat(auto-fill,minmax(min(100%,19rem),1fr))]">
-          {sorted.map(r => {
-            const cd = countdown(r.id);
-            return (
-              <NoteCard key={r.id} note={r} canEdit={canEdit} hideCategory countdown={cd ? whenText(cd.daysAway) : null} soon={cd?.daysAway === 0}
-                onEdit={onEdit} onDuplicate={onDuplicate} onToggleActive={onToggleActive} onDelete={onDeleteNote} />
-            );
-          })}
-        </div>
+        <EntryGrid rows={sorted} canEdit={open} hideCategory noteCols="19rem" onEdit={onEdit} onDuplicate={onDuplicate} onToggleActive={onToggleActive} onDelete={onDeleteNote} onLock={onLock}
+          countdownFor={r => { const cd = countdown(r.id); return cd && cd.daysAway >= 0 ? { text: whenText(cd.daysAway), soon: cd.daysAway === 0 } : null; }} />
       )}
 
-      {editing && <CategoryForm base={base} category={category} onClose={() => setEditing(false)} onSaved={() => { setEditing(false); reload(); }} />}
+      {editing && <CategoryForm base={base} notebookZone={notebookZone} category={category} onClose={() => setEditing(false)} onSaved={() => { setEditing(false); reload(); }} />}
       {confirm && (
         <ConfirmDialog title="Delete category?"
           message={`Delete the category "${category.name}"? Its dates and notes are kept, but no longer belong to a category.`}
