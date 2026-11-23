@@ -36,24 +36,37 @@ export const spanText = ({ date, time, endDate, endTime, timeZone, resolvedTimeZ
 // The ledger's application time zone for diary screens (the browser's when the ledger has none).
 export const useAppZone = () => { const l = useLedger(); return (l && l.timeZone) || browserZone(); };
 
+// Sort direction of the notebook entries, shared by the notebook and category pages (remembered in this browser; newest first by default).
+const NEWEST_KEY = 'diary.newestFirst';
+export const useNewestFirst = () => {
+  const [newest, setNewest] = useState(() => { try { return localStorage.getItem(NEWEST_KEY) !== '0'; } catch { return true; } });
+  const change = on => {
+    setNewest(on);
+    try { localStorage.setItem(NEWEST_KEY, on ? '1' : '0'); } catch { /* storage unavailable: the choice lasts for this page only */ }
+  };
+  return [newest, change];
+};
+
 // The zone an entry reads in: its own, else its category's, else its notebook's (the server resolves it), else the application zone.
 export const zoneOf = (n, appZone) => (n && (n.resolvedTimeZone || n.timeZone)) || appZone;
-const FROM_LABEL = { entry: 'entry', category: 'category', notebook: 'notebook', application: 'application' };
-// What a level inherits from its parents: the first set zone of [zone, levelName] pairs, else the application zone.
+const FROM_LABEL = { entry: 'entry', category: 'category', notebook: 'notebook', application: 'ledger' };
+// What a level takes its zone from: the first set zone of [zone, levelName] pairs, else the application (ledger) zone.
 export const inheritedFrom = (levels, appZone) => {
   const hit = levels.find(([z]) => z);
   return hit ? { zone: hit[0], from: hit[1] } : { zone: appZone, from: 'application' };
 };
-export const fromText = from => (from && from !== 'entry' ? ` (from ${FROM_LABEL[from] || from})` : '');
+const parentLabel = from => FROM_LABEL[from] || from;
+export const fromText = from => (from && from !== 'entry' ? ` (same as ${parentLabel(from)})` : '');
+const city = z => (z.split('/').pop() || z).replace(/_/g, ' ');
 
-// A zone picker for an entry, category or notebook. value '' means "inherit": the closed picker then reads
-// "Inherited: <zone> (from <level>)". The first option is always the inherit choice ("Reset to inherited" once a zone is set).
+// A zone picker for an entry, category or notebook. value '' means "same as the parent": the closed picker then reads
+// "<City> · same as <category|notebook|ledger>"; the first option is that same-as choice.
 export function ZoneSelect({ value, onChange, inherited, label = 'Time zone', disabled }) {
   const zones = allZones();
   const list = value && !zones.includes(value) ? [value, ...zones] : zones;
   return (
     <Select className={inputCls} value={value || ''} onChange={e => onChange(e.target.value)} aria-label={label} disabled={disabled}>
-      <option value="">{value ? `Reset to inherited (${inherited.zone}${fromText(inherited.from)})` : `Inherited: ${inherited.zone}${fromText(inherited.from)}`}</option>
+      <option value="">{value ? `Same as ${parentLabel(inherited.from)}` : `${city(inherited.zone)} · same as ${parentLabel(inherited.from)}`}</option>
       {list.map(z => <option key={z} value={z}>{z}</option>)}
     </Select>
   );

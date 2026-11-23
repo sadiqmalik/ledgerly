@@ -95,19 +95,35 @@ describe('notebooks API', () => {
     assert.equal((await owner.put(`${NB}/${a.id}`).send({ bookId: BOOK })).body.bookId, BOOK);
   });
 
+  it('lists entries latest first: date, then time (none last), then created', async () => {
+    const nb = (await linked('Sorted')).id;
+    const E = `${NB}/${nb}/entries`;
+    const mk = async (title, date, time) => (await entry(nb, { title, date, ...(time ? { time } : {}) })).body;
+    await mk('old-9', '2026-01-01', '09:00');
+    await mk('new-none', '2026-03-01');
+    await mk('new-0800', '2026-03-01', '08:00');
+    await mk('new-2000', '2026-03-01', '20:00');
+    await mk('tie-first', '2026-02-01', '10:00');
+    await mk('tie-second', '2026-02-01', '10:00');
+    const titles = (await owner.get(E)).body.map(n => n.title);
+    assert.deepEqual(titles, ['new-2000', 'new-0800', 'new-none', 'tie-second', 'tie-first', 'old-9']);
+  });
+
   it('entries carry an optional time of day: validation, update, ordering, yearly repeat', async () => {
     const nb = (await linked('Timed')).id;
     const E = `${NB}/${nb}/entries`;
     const a = await entry(nb, { time: '14:30', title: 'Late' });
     assert.equal(a.status, 201); assert.equal(a.body.time, '14:30');
     for (const bad of ['24:00', '9:5', 'abc', '12:60']) assert.equal((await entry(nb, { time: bad })).status, 400, bad);
-    // Old entries without a time still list, with time null; they come first within a day, then by time.
+    // Old entries without a time still list, with time null; latest first: by time descending within a day, no time last.
     await ctx.d1.prepare("INSERT INTO diary_notes (id, book_id, notebook_id, date, title, kind, created_by, created_at, updated_at) VALUES ('old', ?, ?, '2026-02-01', 'Old', 'note', 'x', 't', 't')").bind(BOOK, nb).run();
     await entry(nb, { time: '08:15', title: 'Early' });
     await entry(nb, { title: 'No time' });
     const list = (await owner.get(E)).body;
-    const times = list.map(n => n.time || '');
-    assert.deepEqual(times, [...times].sort());
+    // 2026-02-01 holds only 'old' (no time); other entries use today's date, so order by (date desc, time desc, none last).
+    const key = n => [n.date, n.time ? '1' + n.time : '0'].join('|');
+    const keys = list.map(key);
+    assert.deepEqual(keys, [...keys].sort().reverse());
     assert.equal(list.find(n => n.id === 'old').time, null);
     // Update and clear.
     assert.equal((await owner.put(`${E}/${a.body.id}`).send({ time: '09:00' })).body.time, '09:00');

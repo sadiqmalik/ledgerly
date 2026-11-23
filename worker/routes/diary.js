@@ -341,8 +341,8 @@ const registerDiaryRoutes = (app, { repo }) => {
       const like = `%${likeEscape(f.q.toLowerCase())}%`;
       add(`(${['title', 'message', 'from_name', 'to_name'].map(k => `LOWER(n.${k}) LIKE ? ESCAPE '\\'`).join(' OR ')})`, like, like, like, like);
     }
-    // Within one day entries run by time of day; entries without a time come first.
-    const rows = await L.all(`${SELECT} WHERE ${where.join(' AND ')} ORDER BY n.date DESC, COALESCE(n.note_time, '') ASC, n.created_at DESC, n.id DESC`, ...params);
+    // Latest first: date, then time of day (an entry without a time sorts last on its day), then creation. The client never re-sorts.
+    const rows = await L.all(`${SELECT} WHERE ${where.join(' AND ')} ORDER BY n.date DESC, (n.note_time IS NULL OR n.note_time = '') ASC, n.note_time DESC, n.created_at DESC, n.id DESC`, ...params);
     return c.json(rows.map(map));
   });
 
@@ -362,6 +362,7 @@ const registerDiaryRoutes = (app, { repo }) => {
       const away = daysBetween(today, next);
       if (away <= days) out.push({ ...map(r), nextDate: next, nextEndDate: map(r).endDate ? addDays(next, daysBetween(r.date, map(r).endDate)) : null, daysAway: away, years: r.repeat_yearly === 1 ? Number(next.slice(0, 4)) - Number(r.date.slice(0, 4)) : null });
     }
+    // Upcoming is a countdown: deliberately ascending by next occurrence (soonest first), unlike the newest-first lists.
     out.sort((x, y) => x.nextDate.localeCompare(y.nextDate) || (x.time || '').localeCompare(y.time || '') || x.title.localeCompare(y.title));
     return c.json(out);
   });

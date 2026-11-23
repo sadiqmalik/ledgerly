@@ -6,7 +6,7 @@ import { errorMessage } from '../common/format';
 import { nowInZone } from '../../utils/timeZones';
 import { btnSm, btnSmDanger, btnSmPrimary, Field, Toggle } from '../settings/ui';
 import NoteForm from './NoteForm';
-import { useAppZone } from './shared';
+import { useAppZone, useNewestFirst } from './shared';
 import { EntryGrid } from './DateTile';
 import CategoryForm from './CategoryForm';
 import CategoryPage from './CategoryPage';
@@ -35,6 +35,7 @@ export default function NotebookPage({ nbId, catId, notebook, reloadNotebooks })
   const [categories, setCategories] = useState(null);
   const [upcoming, setUpcoming] = useState([]);
   const appZone = useAppZone();
+  const [newestFirst, setNewestFirst] = useNewestFirst();
   const [view, setView] = useState(null); // null until the categories load, then 'categories' (grouped, when the notebook has categories) or 'all'
   const [rows, setRows] = useState(null);
   const [filt, setFilt] = useState({ category: [], project: [], q: '', from: '', to: '', status: 'active', important: false, kind: 'all' });
@@ -174,7 +175,10 @@ export default function NotebookPage({ nbId, catId, notebook, reloadNotebooks })
       </header>
       {error && <p role="alert" className="text-sm text-negative">{error}</p>}
       <Upcoming items={upcoming} onOpen={openNote} canEdit={canEdit && !notebook.locked} onLock={toggleLock} />
-      <Toggle compact label="Group by category" checked={(view || 'all') === 'categories'} onChange={on => setView(on ? 'categories' : 'all')} />
+      <div className="flex flex-wrap items-center gap-3">
+        <Toggle compact label="Group by category" checked={(view || 'all') === 'categories'} onChange={on => setView(on ? 'categories' : 'all')} />
+        <Toggle compact label="Newest first" checked={newestFirst} onChange={setNewestFirst} />
+      </div>
 
       {view === 'categories' && (
         <>
@@ -216,7 +220,7 @@ export default function NotebookPage({ nbId, catId, notebook, reloadNotebooks })
           </div>
           {rows && !rows.length && <p className="text-sm text-muted-foreground">No entries{filt.status === 'active' ? '' : ' here'}. Use New entry to add one.</p>}
           {!!rows?.length && (
-            <EntryGrid rows={rows} canEdit={canEdit && !notebook.locked} onEdit={openNote} onDuplicate={copyNote} onToggleActive={toggleActive} onDelete={setPendingDelete} onLock={toggleLock} />
+            <EntryGrid rows={rows} newestFirst={newestFirst} canEdit={canEdit && !notebook.locked} onEdit={openNote} onDuplicate={copyNote} onToggleActive={toggleActive} onDelete={setPendingDelete} onLock={toggleLock} />
           )}
         </>
       )}

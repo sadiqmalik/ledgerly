@@ -32,7 +32,9 @@ export default function DateTile({ note: n, onOpen, countdown = null, soon = fal
 }
 
 // A mixed list: plain notes first as cards, then the important dates as a compact tile grid.
-export function EntryGrid({ rows, canEdit, onEdit, onDuplicate, onToggleActive, onDelete, onLock, hideCategory = false, countdownFor = () => null, noteCols = '20rem' }) {
+// rows come from the server newest first; newestFirst={false} shows them oldest first (the cards and tiles keep their order).
+export function EntryGrid({ rows: serverRows, canEdit, onEdit, onDuplicate, onToggleActive, onDelete, onLock, hideCategory = false, countdownFor = () => null, noteCols = '20rem', newestFirst = true }) {
+  const rows = newestFirst ? serverRows : [...serverRows].reverse();
   const notes = rows.filter(r => r.kind !== 'date');
   const dates = rows.filter(r => r.kind === 'date');
   return (

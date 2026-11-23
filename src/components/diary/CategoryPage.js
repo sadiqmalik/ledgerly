@@ -6,17 +6,17 @@ import { errorMessage } from '../common/format';
 import { btnSm, btnSmPrimary, btnSmDanger, Toggle } from '../settings/ui';
 import CategoryForm from './CategoryForm';
 import { EntryGrid } from './DateTile';
-import { whenText, stampText, HeaderLock, LockedChip } from './shared';
+import { whenText, stampText, HeaderLock, LockedChip, useNewestFirst } from './shared';
 
 // One category (a person or a topic such as "Car"): its main note and all its dates and notes as a timeline.
 export default function CategoryPage({ base, nbId, category, canEdit, notebookLocked = false, notebookZone = null, onToggleLock, n, reload, onAdd, onEdit, onDuplicate, onToggleActive, onDeleteNote, onLock, upcoming }) {
   const [rows, setRows] = useState(null);
   const [error, setError] = useState('');
   const [status, setStatus] = useState('active');
-  const [newestFirst, setNewestFirst] = useState(false);
   const [editing, setEditing] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [newestFirst, setNewestFirst] = useNewestFirst();
 
   useEffect(() => {
     let off = false;
@@ -35,7 +35,7 @@ export default function CategoryPage({ base, nbId, category, canEdit, notebookLo
     } catch (e) { setError(errorMessage(e)); setConfirm(false); setBusy(false); }
   };
 
-  const sorted = rows ? [...rows].sort((a, b) => (newestFirst ? b.date.localeCompare(a.date) : a.date.localeCompare(b.date)) || a.title.localeCompare(b.title)) : null;
+  const sorted = rows; // the server already lists newest first (date, then time, no time last); do not re-sort here
   const open = canEdit && !notebookLocked && !category.locked; // content of a locked notebook or category is read only
   const countdown = id => upcoming.find(u => u.id === id);
 
@@ -69,7 +69,7 @@ export default function CategoryPage({ base, nbId, category, canEdit, notebookLo
       {sorted && !sorted.length && <p className="text-sm text-muted-foreground">Nothing here yet.{open && ' Use Add date or Add note.'}</p>}
 
       {!!sorted?.length && (
-        <EntryGrid rows={sorted} canEdit={open} hideCategory noteCols="19rem" onEdit={onEdit} onDuplicate={onDuplicate} onToggleActive={onToggleActive} onDelete={onDeleteNote} onLock={onLock}
+        <EntryGrid rows={sorted} newestFirst={newestFirst} canEdit={open} hideCategory noteCols="19rem" onEdit={onEdit} onDuplicate={onDuplicate} onToggleActive={onToggleActive} onDelete={onDeleteNote} onLock={onLock}
           countdownFor={r => { const cd = countdown(r.id); return cd && cd.daysAway >= 0 ? { text: whenText(cd.daysAway), soon: cd.daysAway === 0 } : null; }} />
       )}
 
