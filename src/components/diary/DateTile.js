@@ -23,7 +23,7 @@ export default function DateTile({ note: n, onOpen, countdown = null, soon = fal
         {n.effectiveLocked && <LockIcon />}
       </div>
       <div className="mt-1 flex flex-wrap items-center gap-x-2 border-t border-foreground/25 pt-1 text-xs text-muted-foreground">
-        <span>{spanText(show ? { ...n, ...show } : n, appZone)}</span>
+        <span className="text-[11px] leading-tight">{spanText(show ? { ...n, ...show } : n, appZone)}</span>
         {countdown && <span className={`font-medium ${soon ? 'text-accent' : ''}`}>{countdown}</span>}
         {n.active === false && <span title="Disabled">off</span>}
       </div>
@@ -46,7 +46,7 @@ export function EntryGrid({ rows: serverRows, canEdit, onEdit, onDuplicate, onTo
     return (
       <div className="flex flex-wrap items-start gap-3">
         {chunks.map((chunk, i) => (
-          <div key={i} className="flex w-full flex-col gap-3 sm:w-64">
+          <div key={i} className="flex w-full flex-col gap-3 sm:w-72">
             {chunk.map(r => (r.kind === 'date'
               ? <DateTile key={r.id} note={r} onOpen={onEdit} canEdit={canEdit} onLock={onLock} countdown={countdownOf(r)?.text ?? null} soon={!!countdownOf(r)?.soon} />
               : <NoteCard key={r.id} note={r} canEdit={canEdit} hideCategory={hideCategory} onEdit={onEdit} onDuplicate={onDuplicate} onToggleActive={onToggleActive} onDelete={onDelete} onLock={onLock} />))}

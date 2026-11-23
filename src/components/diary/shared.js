@@ -47,11 +47,12 @@ const niceDate = d => { const [y, m, day] = d.split('-'); return `${Number(day)}
 // With appZone, a time whose entry has a different time zone gets its abbreviation ("14:30 CET"); same zone shows nothing extra.
 export const spanText = ({ date, time, endDate, endTime, timeZone, resolvedTimeZone }, appZone) => {
   timeZone = resolvedTimeZone || timeZone;
-  const tag = timeZone && appZone && timeZone !== appZone ? ` ${zoneLabel(timeZone, zonedToInstant(date, time || '12:00', timeZone))}` : '';
-  const start = `${niceDate(date)}${time ? `, ${time}${tag}` : ''}`;
-  if (!endDate && !endTime) return start;
-  if (!endDate || endDate === date) return endTime ? `${start} \u2013 ${endTime}${tag}` : start;
-  return `${start} \u2013 ${niceDate(endDate)}${endTime ? `, ${endTime}${tag}` : ''}`;
+  const z = timeZone && appZone && timeZone !== appZone ? zoneLabel(timeZone, zonedToInstant(date, time || '12:00', timeZone)) : '';
+  const tag = z ? ` (${z})` : ''; // shown once, at the end
+  const start = `${niceDate(date)}${time ? `, ${time}` : ''}`;
+  if (!endDate && !endTime) return `${start}${time ? tag : ''}`;
+  if (!endDate || endDate === date) return endTime ? `${start} \u2013 ${endTime}${tag}` : `${start}${time ? tag : ''}`;
+  return `${start} \u2013 ${niceDate(endDate)}${endTime ? `, ${endTime}` : ''}${time || endTime ? tag : ''}`;
 };
 
 // The ledger's application time zone for diary screens (the browser's when the ledger has none).
