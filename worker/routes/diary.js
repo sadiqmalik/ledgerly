@@ -201,7 +201,7 @@ const registerDiaryRoutes = (app, { repo }) => {
     }
   };
   const onlyLocked = data => Object.keys(data).every(k => k === 'locked');
-  const mapCategory = (r, stats = {}) => ({ id: r.id, name: r.name, description: r.description, timeZone: r.time_zone || null, locked: r.locked === 1, layout: r.layout === 'columns' ? 'columns' : 'rows', createdAt: r.created_at, updatedAt: r.updated_at, noteCount: 0, dateCount: 0, nextDate: null, nextDaysAway: null, ...stats });
+  const mapCategory = (r, stats = {}) => ({ id: r.id, name: r.name, description: r.description, timeZone: r.time_zone || null, locked: r.locked === 1, layout: r.layout === 'columns' ? 'columns' : 'rows', createdAt: r.created_at, updatedAt: r.updated_at, noteCount: 0, dateCount: 0, starredCount: 0, colorCounts: {}, kinds: { date: { starred: 0, colors: {} }, note: { starred: 0, colors: {} } }, nextDate: null, nextDaysAway: null, ...stats });
   const idFilter = (raw, column, where, params) => {
     const ids = raw.split(',').filter(Boolean).slice(0, 100);
     const real = ids.filter(x => x !== 'none');
@@ -443,11 +443,16 @@ const registerDiaryRoutes = (app, { repo }) => {
     const { nb } = await open(c);
     const today = parse(upcomingQuery, c.req.query()).today || isoToday();
     const cats = await L.all('SELECT * FROM diary_categories WHERE notebook_id = ? ORDER BY LOWER(name), id', nb.id);
-    const notes = await L.all('SELECT category_id, kind, date, repeat_yearly FROM diary_notes WHERE notebook_id = ? AND active = 1 AND category_id IS NOT NULL', nb.id);
-    const stats = new Map(cats.map(x => [x.id, { noteCount: 0, dateCount: 0, nextDate: null, nextDaysAway: null }]));
+    const notes = await L.all('SELECT category_id, kind, date, repeat_yearly, color, important FROM diary_notes WHERE notebook_id = ? AND active = 1 AND category_id IS NOT NULL', nb.id);
+    const stats = new Map(cats.map(x => [x.id, { noteCount: 0, dateCount: 0, starredCount: 0, colorCounts: {}, kinds: { date: { starred: 0, colors: {} }, note: { starred: 0, colors: {} } }, nextDate: null, nextDaysAway: null }]));
     for (const n of notes) {
       const st = stats.get(n.category_id);
       if (!st) continue;
+      if (n.important === 1) st.starredCount += 1;
+      if (n.color) st.colorCounts[n.color] = (st.colorCounts[n.color] || 0) + 1;
+      const kd = st.kinds[n.kind === 'date' ? 'date' : 'note'];
+      if (n.important === 1) kd.starred += 1;
+      if (n.color) kd.colors[n.color] = (kd.colors[n.color] || 0) + 1;
       if (n.kind === 'date') {
         st.dateCount += 1;
         const next = nextOccurrence(n.date, n.repeat_yearly === 1, today);

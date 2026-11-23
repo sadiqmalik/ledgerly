@@ -6,7 +6,7 @@ import { errorMessage } from '../common/format';
 import { nowInZone } from '../../utils/timeZones';
 import { btnSm, btnSmDanger, btnSmPrimary, Field, Toggle } from '../settings/ui';
 import NoteForm from './NoteForm';
-import { useAppZone, useNewestFirst } from './shared';
+import { useAppZone, useNewestFirst, COLOR_BG } from './shared';
 import { EntryGrid } from './DateTile';
 import CategoryForm from './CategoryForm';
 import CategoryPage from './CategoryPage';
@@ -192,7 +192,24 @@ export default function NotebookPage({ nbId, catId, notebook, reloadNotebooks })
                     {c.locked && <span className="flex shrink-0 items-center"><LockIcon /></span>}
                   </div>
                   {c.description && <p className="mt-2 line-clamp-3 whitespace-pre-wrap break-words text-sm text-muted-foreground">{c.description}</p>}
-                  <p className="mt-2 text-xs text-muted-foreground">{c.dateCount} {c.dateCount === 1 ? 'date' : 'dates'} · {c.noteCount} {c.noteCount === 1 ? 'note' : 'notes'}</p>
+                  <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+                    {[['date', c.dateCount, 'date', 'dates'], ['note', c.noteCount, 'note', 'notes']].map(([k, n, one, many], i) => {
+                      const kd = (c.kinds || {})[k] || { starred: 0, colors: {} };
+                      const colors = Object.entries(kd.colors);
+                      return (
+                        <span key={k} tabIndex={0} className="group relative cursor-default outline-none">
+                          {i ? '· ' : ''}{n} {n === 1 ? one : many}
+                          {(!!kd.starred || !!colors.length) && (
+                            <span role="tooltip" className="pointer-events-none invisible absolute left-0 top-full z-20 mt-1 min-w-max rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs text-foreground opacity-0 shadow-lg transition-opacity group-hover:visible group-hover:opacity-100 group-focus:visible group-focus:opacity-100">
+                              <span className="block font-medium">{n} {n === 1 ? one : many}</span>
+                              {!!kd.starred && <span className="block"><span className="text-accent">&#9733;</span> {kd.starred} starred</span>}
+                              {colors.map(([col, v]) => <span key={col} className="flex items-center gap-1.5"><span className={`h-2.5 w-2.5 rounded-full ${COLOR_BG[col]}`} />{v} {col}</span>)}
+                            </span>
+                          )}
+                        </span>
+                      );
+                    })}
+                  </p>
                   {c.nextDate && (
                     <p className="mt-2 flex items-center gap-1 text-xs font-medium text-accent"><CalendarIcon />Next: {c.nextDate} ({whenText(c.nextDaysAway)})</p>
                   )}
