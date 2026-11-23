@@ -43,9 +43,15 @@ const NAV_GROUPS = [
 // One Administration group: Settings (the open ledger) for admins, plus Admins (admins, access codes, all ledgers and
 // currencies) for super administrators only (the admin page checks again).
 const ADMIN_ITEM = { path: '/admin', label: 'Admins', icon: 'users' };
-// Super administrators get ONE expandable item instead of Settings + Admins: app-wide Admin sections, then this ledger's Settings.
-const SUPER_ADMIN_ITEM = { path: '/admin', label: 'Administration', icon: 'settings', also: ['/settings'] };
-const withAdminItem = groups => groups.map(g => (g.label === 'Administration' ? { ...g, items: [SUPER_ADMIN_ITEM] } : g));
+// Super administrators: the Administration group lists the four sections directly (same layer as Money and Files): Access,
+// Ledgers, Settings, Data. A section spans the Admin and Settings pages, so each item has its own address and highlight rule.
+const adminSections = settingsGroups => [
+  { path: '/admin?access', href: '#/admin?group=access', label: 'Access', icon: 'users', section: 'Access' },
+  { path: '/admin?ledgers', href: '#/admin?group=ledgers', label: 'Ledgers', icon: 'ledger', section: 'Ledgers' },
+  { path: '/admin?settings', href: settingsGroups.includes('Settings') ? '#/settings?group=settings' : '#/admin?group=settings', label: 'Settings', icon: 'settings', section: 'Settings' },
+  ...(settingsGroups.includes('Data') ? [{ path: '/settings?data', href: '#/settings?group=data', label: 'Data', icon: 'reports', section: 'Data' }] : []),
+];
+const withAdminItem = (groups, settingsGroups) => groups.map(g => (g.label === 'Administration' ? { ...g, items: adminSections(settingsGroups) } : g));
 
 const ALL_ITEMS = [DASHBOARD_ITEM, ...NAV_GROUPS.flatMap(group => group.items), ADMIN_ITEM];
 
@@ -274,34 +280,6 @@ function GroupChildren({ path, groups, route, onNavigate }) {
   );
 }
 
-// Super administrator children: Access, Ledgers, Settings, Data. Each spans the Admin and Settings pages; a section is
-// highlighted on either page when ?group= is that section.
-function AdminChildren({ settingsGroups, route, onNavigate }) {
-  const [queryString] = useHashQuery();
-  const raw = new URLSearchParams(queryString).get('group');
-  const onAdmin = route === '/admin';
-  const onSettings = route === '/settings';
-  const current = raw ? resolveGroup(raw, ['Access', 'Ledgers', 'Settings', 'Data']) : (onAdmin ? 'Access' : settingsGroups[0]);
-  const sections = [
-    { g: 'Access', href: '#/admin?group=access' },
-    { g: 'Ledgers', href: '#/admin?group=ledgers' },
-    { g: 'Settings', href: settingsGroups.includes('Settings') ? '#/settings?group=settings' : '#/admin?group=settings' },
-    ...(settingsGroups.includes('Data') ? [{ g: 'Data', href: '#/settings?group=data' }] : []),
-  ];
-  return (
-    <ul className="nav-tree">
-      {sections.map(({ g, href }) => {
-        const active = (onAdmin || onSettings) && current === g;
-        return (
-          <li key={g}>
-            <a href={href} aria-current={active ? 'page' : undefined} onClick={() => onNavigate && onNavigate()} className={linkCls(active)}>{g}</a>
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
-
 // Items that open a child list under them (Projects, Loans). One row: the page link and, inside the same highlighted
 // row, a small arrow that opens or closes the list. The open state is kept in this browser.
 const EXPANDABLE = { '/projects': 'ledger.sidebar.projectsOpen.v2', '/loans': 'ledger.sidebar.loansOpen.v2', '/settings': 'ledger.sidebar.settingsOpen.v1', '/admin': 'ledger.sidebar.administrationOpen.v1' };
@@ -318,7 +296,7 @@ function NavItem({ item, active, collapsed, onNavigate, renderChildren }) {
   const toggle = () => setOpen(o => { writeLocal(storeKey, o ? '0' : '1'); return !o; });
   const listId = `nav-${item.path.slice(1)}-list`;
   const link = (
-    <a href={`#${item.path}`} aria-current={active ? 'page' : undefined} title={collapsed ? item.label : undefined}
+    <a href={item.href || `#${item.path}`} aria-current={active ? 'page' : undefined} title={collapsed ? item.label : undefined}
       aria-label={collapsed ? item.label : undefined} onClick={() => onNavigate && onNavigate()}
       className={expandable ? rowLinkClass(active) : itemClass(active, collapsed)}>
       <Icon name={item.icon} className={active ? 'text-accent' : ''} />
@@ -348,10 +326,14 @@ function NavLinks({ route, groups, collapsed, label, onNavigate, bookId, flat = 
     if (item.path === '/projects' && bookId) return () => <ProjectChildren bookId={bookId} route={route} onNavigate={onNavigate} />;
     if (item.path === '/loans') return () => <LoanChildren route={route} onNavigate={onNavigate} bookId={bookId} />;
     if (item.path === '/settings' && settingsGroups.length) return () => <GroupChildren path="/settings" groups={settingsGroups} route={route} onNavigate={onNavigate} />;
-    if (item.path === '/admin') return () => <AdminChildren settingsGroups={settingsGroups} route={route} onNavigate={onNavigate} />;
     return null;
   };
-  const activeOf = item => (item.also ? [item.path, ...item.also].includes(route) : isActive(route, item.path) && (!childrenFor(item) || route === item.path));
+  const [hashQuery] = useHashQuery(); // follows ?group=, so picking a section moves the highlight
+  const rawGroup = new URLSearchParams(hashQuery).get('group');
+  const currentSection = rawGroup ? resolveGroup(rawGroup, ['Access', 'Ledgers', 'Settings', 'Data']) : (route === '/admin' ? 'Access' : settingsGroups[0]);
+  const activeOf = item => (item.section
+    ? (route === '/admin' || route === '/settings') && currentSection === item.section
+    : item.also ? [item.path, ...item.also].includes(route) : isActive(route, item.path) && (!childrenFor(item) || route === item.path));
   return (
     <nav aria-label={label} className="flex flex-col gap-4">
       {flat ? (
@@ -363,7 +345,7 @@ function NavLinks({ route, groups, collapsed, label, onNavigate, bookId, flat = 
           ))}
         </ul>
       ) : groups.map(group => (
-        <GroupShell key={group.label} label={group.label} collapsed={collapsed} dot={group.items.some(i => isActive(route, i.path) || (i.also || []).includes(route))}>
+        <GroupShell key={group.label} label={group.label} collapsed={collapsed} dot={group.items.some(activeOf)}>
           <ul {...groupListProps(collapsed)}>
             {group.items.map(item => (
               <li key={item.path}>
@@ -466,7 +448,8 @@ function AppShell({ books, book, onSelectBook, children }) {
   const allowedGroups = NAV_GROUPS
     .map(group => ({ ...group, items: group.items.filter(item => (item.superOnly ? isSuper : hasResource(pages, routeResource(item.path)) && (item.path !== '/loans' || isSuper || (account?.loanMemberships || []).length > 0))).map(named) }))
     .filter(group => group.items.length > 0);
-  const groups = isSuper ? withAdminItem(allowedGroups) : allowedGroups;
+  const settingsGroups = book ? visibleGroups(book.role || roleFor(account, book.id), isSuper) : [];
+  const groups = isSuper ? withAdminItem(allowedGroups, settingsGroups) : allowedGroups;
   const topItems = [DASHBOARD_ITEM].filter(item => hasResource(pages, routeResource(item.path)));
   const activeItem = ALL_ITEMS.map(named).find(item => isActive(route, item.path));
   const pageTitle = activeItem ? activeItem.label : 'Ledger';
@@ -521,7 +504,7 @@ function AppShell({ books, book, onSelectBook, children }) {
           </ul>
         </nav>
       )}
-      <NavLinks label={collapsed ? 'Main navigation' : 'Sheet navigation'} route={route} groups={groups} collapsed={collapsed} onNavigate={() => setSheetOpen(false)} bookId={book?.id} settingsGroups={book ? visibleGroups(book.role || roleFor(account, book.id), isSuper) : []} flat={Boolean(account?.accessCode)} />
+      <NavLinks label={collapsed ? 'Main navigation' : 'Sheet navigation'} route={route} groups={groups} collapsed={collapsed} onNavigate={() => setSheetOpen(false)} bookId={book?.id} settingsGroups={settingsGroups} flat={Boolean(account?.accessCode)} />
     </>
   );
 
