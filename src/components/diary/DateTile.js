@@ -40,16 +40,14 @@ export function EntryGrid({ rows: serverRows, canEdit, onEdit, onDuplicate, onTo
   const countdownOf = r => { const cd = countdownFor(r); return cd ? { text: cd.text, soon: !!cd.soon } : null; };
   // Columns: every entry (notes and dates) side by side in one wrapping card grid, in list order.
   if (layout === 'columns') {
-    // Fixed-width columns of up to 10 entries; the next entry starts a new column, and columns wrap to the next line.
-    const chunks = [];
-    for (let i = 0; i < rows.length; i += 10) chunks.push(rows.slice(i, i + 10));
+    // Balanced columns: as many as fit the width, the entries split evenly and read in order down column 1, then column 2...
     return (
-      <div className="flex flex-wrap items-start gap-3">
-        {chunks.map((chunk, i) => (
-          <div key={i} className="flex w-full flex-col gap-3 sm:w-72">
-            {chunk.map(r => (r.kind === 'date'
-              ? <DateTile key={r.id} note={r} onOpen={onEdit} canEdit={canEdit} onLock={onLock} countdown={countdownOf(r)?.text ?? null} soon={!!countdownOf(r)?.soon} />
-              : <NoteCard key={r.id} note={r} canEdit={canEdit} hideCategory={hideCategory} onEdit={onEdit} onDuplicate={onDuplicate} onToggleActive={onToggleActive} onDelete={onDelete} onLock={onLock} />))}
+      <div className="gap-3 [column-width:18rem]">
+        {rows.map(r => (
+          <div key={r.id} className="mb-3 break-inside-avoid">
+            {r.kind === 'date'
+              ? <DateTile note={r} onOpen={onEdit} canEdit={canEdit} onLock={onLock} countdown={countdownOf(r)?.text ?? null} soon={!!countdownOf(r)?.soon} />
+              : <NoteCard note={r} canEdit={canEdit} hideCategory={hideCategory} onEdit={onEdit} onDuplicate={onDuplicate} onToggleActive={onToggleActive} onDelete={onDelete} onLock={onLock} />}
           </div>
         ))}
       </div>
